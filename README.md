@@ -1,9 +1,12 @@
 # opencode-notes
 
-Plugin de **memória de longa duração curada** para o [OpenCode](https://opencode.ai)
-(V2). Expõe as operações do CLI global `notes` como tools tipadas no namespace
-`notes` — decisões, problemas resolvidos, configurações e snippets, com ciclo de
-confiança (`confirm`/`dispute`/`retract`) e histórico completo de versões.
+Plugin e skill de **memória de longa duração curada** para o
+[OpenCode](https://opencode.ai) (V2). O plugin expõe as operações do CLI
+global `notes` como tools tipadas no namespace `notes` — decisões, problemas
+resolvidos, configurações e snippets, com ciclo de confiança
+(`confirm`/`dispute`/`retract`) e histórico completo de versões. O skill
+(`skills/notes/SKILL.md`) documenta a camada completa (CLI + tools) para os
+agentes.
 
 O plugin é autocontido: nenhum import de fora do diretório (só
 `@opencode/plugin` e `zod`, instalados pelo próprio `package.json`), e nenhum
@@ -18,16 +21,18 @@ cd opencode-notes
 npm install
 mkdir -p ~/.config/opencode/plugins
 ln -sfn "$PWD" ~/.config/opencode/plugins/notes
+ln -sfn "$PWD/skills/notes/SKILL.md" ~/.config/opencode/skills/notes/SKILL.md
 ```
 
 Reinicie o OpenCode (ou aguarde o hot-reload). O plugin precisa do CLI `notes`
 disponível (o `opencode-tools` instala o symlink `~/.local/bin/notes` via
 `setup.sh`); o wrapper resolve o binário por `$NOTES_BIN` > `~/.local/bin/notes`
-> `PATH`.
+> `PATH`. O skill é opcional (o plugin funciona sem ele), mas é ele que
+ensina os agentes quando e como registrar notas.
 
 > Pré-publicação: enquanto o plugin não está publicado, o fluxo acima é o
 > caminho de instalação. O repo `opencode-tools` consome este projeto como
-> **git submodule** em `plugins/notes` e faz o mesmo symlink via `setup.sh`
+> **git submodule** em `plugins/notes` e faz os dois symlinks via `setup.sh`
 > (que também roda o `npm install` dentro dele).
 
 ## O que o plugin faz
@@ -65,6 +70,18 @@ StandardSchemaV1); cada tool retorna `{content, metadata}`.
   é interpretado — aspas, `;`, `$(...)`, emoji e novas linhas ficam literais.
 - Nenhum comando destrutivo é exposto: `retract` só esconde (reversível),
   `restore` recupera versões.
+
+## Skill
+
+`skills/notes/SKILL.md` (name `notes`) é o contrato de uso da camada para os
+agentes: quando registrar (problemas resolvidos com Sintoma/Causa/Solução —
+obrigatório antes de fechar tarefa, decisões, configs, snippets), o ciclo de
+confiança (`confirm`/`dispute`/`retract`), o `update` como último recurso com
+histórico reversível, convenções (categorias, `Scope:`, tags, autor),
+backup/export-import e a regra de escrever as notas em inglês. O
+`opencode-tools` expõe o skill via symlink
+`~/.config/opencode/skills/notes/SKILL.md` (o `setup.sh` faz o link a partir
+do submodule).
 
 ## Desenvolvimento
 
