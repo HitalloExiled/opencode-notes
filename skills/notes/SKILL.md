@@ -1,5 +1,5 @@
 ---
-name: notes
+name: Notes
 description: Curated, portable knowledge base in SQLite (FTS5) via global CLI `notes` and tools `notes.add`/`notes.update`/`notes.confirm`/`notes.dispute`/`notes.retract`/`notes.history`/`notes.restore`/`notes.view`/`notes.search`/`notes.doctor` (effective names `notes_add`, `notes_search`, ... in regular sessions). Stores distilled facts at any scope (global, project, machine) — decisions, resolved problems with symptom/cause/solution, configuration, snippets — with a trust lifecycle (`notes.confirm`/`notes.dispute` set the trust signal on a note; `notes.retract` hides noise without deleting) and full revision history; notes survive machines via export/import. `notes.update` is a last resort, only to fix a note now known to be wrong or conflicting, and keeps the previous version readable via `notes.history`/`notes.restore`. Use when a fact must stay true across sessions and machines, or before acting on a project with documented history. Not a conversation log: it holds distilled knowledge, not what was said in a session.
 metadata:
   audience: any
