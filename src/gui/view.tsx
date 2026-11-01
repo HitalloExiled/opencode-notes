@@ -491,7 +491,7 @@ export function NotesView() {
         </span>
         <span class="notes-count">{count()} notas</span>
         <span class="spacer" />
-        <ctx.ui.Button variant="contrast" icon="plus" onClick={openAdd}>
+        <ctx.ui.Button variant="neutral" icon="plus" onClick={openAdd}>
           Nova nota
         </ctx.ui.Button>
       </header>
