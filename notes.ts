@@ -33,6 +33,7 @@ const CATEGORIES = [
   "config",
   "snippet",
   "architecture",
+  "user",
   "general",
 ] as const;
 
