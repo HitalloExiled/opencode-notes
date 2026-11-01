@@ -70,6 +70,8 @@ const defaultForm: FormState = {
   author: "",
 }
 
+const PAGE_SIZE = 25
+
 export function NotesView() {
   const ctx = usePlugin()
   const api = ctx.main(NotesApi)
@@ -86,19 +88,25 @@ export function NotesView() {
   const [formOpen, setFormOpen] = createSignal(false)
   const [form, setForm] = createSignal(defaultForm)
   const [notes, setNotes] = createSignal<Note[]>([])
+  const [page, setPage] = createSignal(0)
 
   /* ---------- loading ---------- */
   const loadNotes = async () => {
     const q = query().trim()
+    const pinned = pinnedOnly()
+    const all = showRetracted()
     setLoading(true)
     setError("")
     try {
       const res = q
-        ? await api.search({ query: q, all: showRetracted() })
-        : await api.list({ all: showRetracted(), limit: 500 })
+        ? await api.search({ query: q, all })
+        : await api.list({ all, limit: 500 })
       let out = res as unknown as Note[]
-      if (pinnedOnly()) out = out.filter((n) => n.pinned)
+      if (pinned) out = out.filter((n) => n.pinned)
       setNotes(out)
+      // Keep the current page valid after a write or a filter change.
+      const maxPage = Math.max(0, Math.ceil(out.length / PAGE_SIZE) - 1)
+      if (page() > maxPage) setPage(maxPage)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -108,6 +116,8 @@ export function NotesView() {
 
   // Re-runs when query / filters change (those signals are read inside loadNotes).
   createEffect(() => {
+    // A new query or filter always starts at the first page.
+    setPage(0)
     void loadNotes()
   })
 
@@ -224,6 +234,11 @@ export function NotesView() {
 
   /* ---------- derived ---------- */
   const count = createMemo(() => notes().length)
+  const pageCount = createMemo(() => Math.max(1, Math.ceil(notes().length / PAGE_SIZE)))
+  const pagedNotes = createMemo(() => {
+    const start = page() * PAGE_SIZE
+    return notes().slice(start, start + PAGE_SIZE)
+  })
   const revs = createMemo(() => detail()?.revisions ?? [])
 
   /* ---------- render helpers ---------- */
@@ -325,7 +340,7 @@ export function NotesView() {
         .chip { border: 1px solid currentColor; border-radius: 18px; padding: 2px 10px; background: transparent; color: inherit; font: inherit; cursor: pointer; opacity: .7; }
         .chip.active { opacity: 1; font-weight: 600; }
         .notes { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; min-height: 0; }
-        .note { border: 1px solid currentColor; border-radius: 8px; background: transparent; overflow: hidden; }
+        .note { flex: 0 0 auto; border: 1px solid currentColor; border-radius: 8px; background: transparent; overflow: hidden; }
         .note.retracted { opacity: .5; }
         .note.selected { box-shadow: inset 0 0 0 2px currentColor; }
         .note-head { display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left; background: transparent; border: none; font: inherit; color: inherit; cursor: pointer; padding: 8px 10px; }
@@ -354,6 +369,7 @@ export function NotesView() {
         .form input, .form select, .form textarea { border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; padding: 4px 6px; }
         .form textarea { resize: vertical; min-height: 90px; }
         .loading { opacity: .5; font-size: 12px; }
+        .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 2px; }
       `}</style>
 
       <header class="notes-head">
@@ -461,8 +477,26 @@ export function NotesView() {
             No notes{query().trim() ? ` matching “${query()}”` : ""} yet.
           </div>
         </Show>
-        {notes().map((n) => card(n))}
+        {pagedNotes().map((n) => card(n))}
       </div>
+
+      <Show when={pageCount() > 1}>
+        <div class="pager">
+          <button class="btn small" disabled={page() === 0} onClick={() => setPage(page() - 1)}>
+            ← Prev
+          </button>
+          <span class="muted">
+            Page {page() + 1} / {pageCount()}
+          </span>
+          <button
+            class="btn small"
+            disabled={page() >= pageCount() - 1}
+            onClick={() => setPage(page() + 1)}
+          >
+            Next →
+          </button>
+        </div>
+      </Show>
     </div>
   )
 }
