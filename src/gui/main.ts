@@ -69,9 +69,14 @@ function openDb(): Promise<Db | null> {
     dbPromise = (async () => {
       try {
         const mod = await import("node:sqlite")
-        const Database = (mod as any).Database ?? (mod as any).default?.Database
+        // Node 24 exposes `DatabaseSync`; older/preview builds used `Database`.
+        const Database =
+          (mod as any).DatabaseSync ??
+          (mod as any).Database ??
+          (mod as any).default?.DatabaseSync ??
+          (mod as any).default?.Database
         if (typeof Database === "undefined") return null
-        const d: Db = new (Database as any)(notesDbPath(), { fileMode: "open-readonly" })
+        const d: Db = new (Database as any)(notesDbPath(), { readOnly: true })
         d.prepare("SELECT 1").get()
         return d
       } catch {
@@ -254,11 +259,17 @@ function nbCommand(): string {
 
 function runCli(args: string[], timeoutMs = 15000): Promise<Run> {
   return new Promise((resolve) => {
+    let settled = false
+    const finish = (run: Run) => {
+      if (settled) return
+      settled = true
+      resolve(run)
+    }
     let child: ReturnType<typeof spawn>
     try {
       child = spawn(nbCommand(), args, { stdio: ["pipe", "pipe", "pipe"], timeout: timeoutMs })
     } catch (err) {
-      resolve({
+      finish({
         code: 127,
         stdout: "",
         stderr: `could not run '${nbCommand()}': ${
@@ -273,8 +284,11 @@ function runCli(args: string[], timeoutMs = 15000): Promise<Run> {
     child.stderr?.on("data", (c: Buffer) => (stderr += String(c)))
     child.on("error", (err) => {
       stderr += `\n${err instanceof Error ? err.message : String(err)}`
+      // A spawn failure (e.g. ENOENT) may never emit `close`; settle so the
+      // IPC call cannot hang the panel.
+      finish({ code: 127, stdout, stderr })
     })
-    child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }))
+    child.on("close", (code) => finish({ code: code ?? -1, stdout, stderr }))
   })
 }
 
@@ -445,9 +459,10 @@ const fallbackSearch = async (
 /** Extract "#NN" ids from a CLI block of output. */
 function parseIds(text: string): number[] {
   const out: number[] = []
-  const re = /#\s*(\d+)/g
-  let m: RegExpMatchArray | null
-  while ((m = text.match(re))) {
+  // `String.prototype.match` with a global regex never advances `lastIndex`,
+  // so a `while (text.match(re))` loop would spin forever. `matchAll` is
+  // anchored to the input and yields every match once.
+  for (const m of text.matchAll(/#\s*(\d+)/g)) {
     const id = Number(m[1])
     if (id > 0 && !out.includes(id)) out.push(id)
   }
