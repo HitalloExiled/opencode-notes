@@ -1,6 +1,6 @@
 ---
 name: Notes
-description: Curated, portable knowledge base in SQLite (FTS5) via global CLI `notes` and tools `notes.add`/`notes.update`/`notes.confirm`/`notes.dispute`/`notes.retract`/`notes.history`/`notes.restore`/`notes.view`/`notes.search`/`notes.doctor` (effective names `notes_add`, `notes_search`, ... in regular sessions). Stores distilled facts at any scope (global, project, machine) — decisions, resolved problems with symptom/cause/solution, configuration, snippets — with a trust lifecycle (`notes.confirm`/`notes.dispute` set the trust signal on a note; `notes.retract` hides noise without deleting) and full revision history; notes survive machines via export/import. `notes.update` is a last resort, only to fix a note now known to be wrong or conflicting, and keeps the previous version readable via `notes.history`/`notes.restore`. Use when a fact must stay true across sessions and machines, or before acting on a project with documented history. Not a conversation log: it holds distilled knowledge, not what was said in a session.
+description: Curated, portable knowledge base in SQLite (FTS5) via global CLI `notes` and tools `notes.add`/`notes.update`/`notes.confirm`/`notes.dispute`/`notes.retract`/`notes.history`/`notes.restore`/`notes.view`/`notes.pin`/`notes.unpin`/`notes.search`/`notes.doctor` (effective names `notes_add`, `notes_search`, ... in regular sessions). Stores distilled facts at any scope (global, project, machine) — decisions, resolved problems with symptom/cause/solution, configuration, snippets — with a trust lifecycle (`notes.confirm`/`notes.dispute` set the trust signal on a note; `notes.retract` hides noise without deleting) and full revision history; notes survive machines via export/import. `notes.update` is a last resort, only to fix a note now known to be wrong or conflicting, and keeps the previous version readable via `notes.history`/`notes.restore`. Use when a fact must stay true across sessions and machines, or before acting on a project with documented history. Not a conversation log: it holds distilled knowledge, not what was said in a session.
 metadata:
   audience: any
   opencode/slash: "true"
@@ -35,6 +35,8 @@ Implementation and installation: repo **`opencode-tools`** (section `memory/`).
 | `notes.history` | read a note's current state + every earlier version (rev #N) |
 | `notes.restore` | bring back the content of an earlier rev #N (keeps the current one too) |
 | `notes.view` | show one note by id in full, whatever its state (retracted included, with 🚫) |
+| `notes.pin` | 📌 make a note part of the `<memory-context>` injected at the start of every session (up to 12 / 3000 chars) |
+| `notes.unpin` | 📎 stop injecting a note at session start (it remains searchable) |
 | `notes.doctor` | diagnose memory/schema/FTS5 when something fails |
 
 Via terminal (or when tools are unavailable), the equivalent CLI:
@@ -51,7 +53,32 @@ notes retract <id> [--why "<reason>"] # junk/obsolete: gone from search/list
 notes history <id> [limit]             # current state + earlier versions (rev #N)
 notes restore <id> <rev>               # bring back a rev's content (current kept)
 notes view <id>                        # the whole note by id (alias: show)
+notes pin <id>                         # inject at session start (up to 12 / 3000 chars)
+notes unpin <id>                       # stop injecting (still searchable)
 notes doctor                      # diagnosis
+```
+
+## Pinning: the notes that travel with every session
+
+A pinned note is injected at the start of every session as the **Pinned notes**
+section of the `<memory-context>` block. Injection is scoped: the note must
+name the session's project or this machine, must not be retracted, and the
+set is capped (12 notes, 3000 chars; `MEMORY_NOTES_INJECT`).
+
+- **Pin** a note when it is a durable fact the agent needs *in context at
+  every session* — environment quirks (paths, binaries, versions, permissions),
+  project invariants, or the current task's key constraints. Pinning is
+  part of the work: when you establish such a fact, add the note and pin it
+  in the same turn.
+- **Unpin** when it is no longer relevant. Keep the pinned set lean — it
+  shares a fixed budget with the handoff and should only hold what you need
+  across sessions.
+- **Everything else stays searchable**: unpinned notes are never injected,
+  but they are one `notes.search` away. Do not pin to avoid a search.
+
+```bash
+notes pin <id>     # start injecting the note at session start
+notes unpin <id>   # stop injecting it (still searchable)
 ```
 
 ## When to use

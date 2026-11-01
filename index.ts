@@ -20,9 +20,11 @@ import {
   dispute,
   doctor,
   history,
+  pin,
   restore,
   retract,
   search,
+  unpin,
   update,
   view,
 } from "./notes.js";
@@ -37,7 +39,7 @@ export default Plugin.define({
       editor.namespace({
         name: "notes",
         description:
-          "Curated long-term memory: decisions, solved problems, configuration and snippets, with a trust lifecycle (confirm/dispute/retract) and full version history. Use notes.search BEFORE working on a project with history and before saving a new note. Register durable facts with notes.add (in English). Nothing is ever deleted: retract hides, restore revives.",
+          "Curated long-term memory: decisions, solved problems, configuration and snippets, with a trust lifecycle (confirm/dispute/retract), full version history, and pinning into session context (pinned notes are injected at session start; up to 12 / 3000 chars). Use notes.search BEFORE working on a project with history and before saving a new note. Register durable facts with notes.add (in English). Nothing is ever deleted: retract hides, restore revives.",
       });
       editor.add({ ...add, options: { namespace: "notes" } });
       editor.add({ ...update, options: { namespace: "notes" } });
@@ -48,6 +50,8 @@ export default Plugin.define({
       editor.add({ ...history, options: { namespace: "notes" } });
       editor.add({ ...restore, options: { namespace: "notes" } });
       editor.add({ ...view, options: { namespace: "notes" } });
+      editor.add({ ...pin, options: { namespace: "notes" } });
+      editor.add({ ...unpin, options: { namespace: "notes" } });
       editor.add({ ...doctor, options: { namespace: "notes" } });
     });
 

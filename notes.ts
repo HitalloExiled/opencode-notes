@@ -9,7 +9,7 @@
  * Thin, typed wrapper over the global `notes` CLI, which lives in the
  * opencode-tools repo (memory/notes.py). The wrapper exposes NO destructive
  * operation: add / update / confirm / dispute / retract / history / restore
- * / view / search / doctor. `update` and the trust flags change an existing
+ * / pin / unpin / view / search / doctor. `update` and the trust flags change an existing
  * note; `retract` only hides it (reversible); `restore` brings back an old
  * revision. Nothing is ever deleted, and every `update`/`restore` keeps the
  * previous version readable via `history`.
@@ -474,6 +474,42 @@ export const doctor = {
     return {
       content: render(run),
       metadata: { exit: run.code },
+    };
+  },
+};
+const pinInput = z.object({
+  id: z.number().int().positive().describe(ID_DESC),
+});
+type PinArgs = z.infer<typeof pinInput>;
+
+export const pin = {
+  name: "pin",
+  description:
+    "Pin a note: it will be injected at the start of every session (up to the " +
+    "MEMORY_NOTES_INJECT quota). Use this when a note is a durable fact you need " +
+    "across sessions. Unpin when it is no longer relevant.",
+  input: pinInput,
+  async execute(args: PinArgs): Promise<ToolResult> {
+    const run = await runNb(["pin", String(args.id)]);
+    return {
+      content: render(run),
+      metadata: { id: args.id, exit: run.code },
+    };
+  },
+};
+
+export const unpin = {
+  name: "unpin",
+  description:
+    "Unpin a note: it will no longer be injected at session start (but remains " +
+    "searchable via notes.search). Use this when a pinned note is no longer " +
+    "relevant to the current work.",
+  input: pinInput,
+  async execute(args: PinArgs): Promise<ToolResult> {
+    const run = await runNb(["unpin", String(args.id)]);
+    return {
+      content: render(run),
+      metadata: { id: args.id, exit: run.code },
     };
   },
 };
