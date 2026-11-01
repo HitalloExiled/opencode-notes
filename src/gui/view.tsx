@@ -509,13 +509,6 @@ export function NotesView() {
       <div class="chips">
         <ctx.ui.Button
           size="small"
-          variant={pinnedOnly() ? "ghost-muted" : "neutral"}
-          onClick={() => setPinnedOnly(false)}
-        >
-          Todas
-        </ctx.ui.Button>
-        <ctx.ui.Button
-          size="small"
           variant={pinnedOnly() ? "neutral" : "ghost-muted"}
           onClick={() => setPinnedOnly(!pinnedOnly())}
         >
