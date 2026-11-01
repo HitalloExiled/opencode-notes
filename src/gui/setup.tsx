@@ -23,7 +23,7 @@ export function setup(ctx: SetupContext<never>): void {
   // session switch and does not re-render it on every routing event.
   const notesTab: PanelTab = {
     id: openNotesId,
-    title: "Notes",
+    title: "Notas",
     pinned: true,
     closable: false,
   }
@@ -40,8 +40,8 @@ export function setup(ctx: SetupContext<never>): void {
 
   ctx.add(Command, () => ({
     id: "open",
-    title: "Open Notes",
-    description: "Open the Notes side-panel tab",
+    title: "Abrir Notas",
+    description: "Abre a aba de Notas no painel lateral",
     bind: "mod+shift+n",
     group: "general",
     run: () => {
@@ -57,7 +57,7 @@ export function setup(ctx: SetupContext<never>): void {
   const notesMenu: SessionPanelMenuItem = {
     menu: "session.panel",
     id: "notes",
-    title: "Notes",
+    title: "Notas",
     icon: "file-document",
     run: () => {
       const session = ctx.sessions.current()

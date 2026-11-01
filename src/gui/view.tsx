@@ -1,55 +1,31 @@
 /**
- * Notes side panel — SolidJS UI.
+ * Notes side panel — SolidJS UI, aligned with the app design system.
  *
- * Reads the notes over the GUI IPC (`ctx.main(NotesApi)`) and offers full
- * CRUD: add / edit / confirm / dispute / retract / pin / unpin / restore,
- * search (FTS with LIKE fallback), a pinned filter, and revision history.
+ * Renders the plugin's own `ctx.ui` components (buttons, text fields,
+ * loader, icons) and the app's CSS tokens (`--v2-*`, `--font-*`), so the
+ * panel follows the user's theme (light/dark), fonts and language. UI copy
+ * is pt-BR; code stays in English.
+ *
+ * Data: reads notes over the GUI IPC (`ctx.main(NotesApi)`), full CRUD —
+ * add / edit / confirm / dispute / retract / pin / unpin / restore —
+ * FTS search with LIKE fallback, a pinned filter, and revision history.
  */
 
 import { createEffect, createMemo, createSignal } from "solid-js"
 import { Show } from "solid-js"
 import { usePlugin } from "@opencode/plugin/gui"
 import { NotesApi } from "./contract"
+import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
 
 const CATEGORIES = [
-  { value: "problem", label: "#problem" },
-  { value: "decision", label: "#decision" },
-  { value: "config", label: "#config" },
-  { value: "snippet", label: "#snippet" },
-  { value: "architecture", label: "#architecture" },
-  { value: "user", label: "#user" },
-  { value: "general", label: "#general" },
+  { value: "problem", label: "problem" },
+  { value: "decision", label: "decision" },
+  { value: "config", label: "config" },
+  { value: "snippet", label: "snippet" },
+  { value: "architecture", label: "architecture" },
+  { value: "user", label: "user" },
+  { value: "general", label: "general" },
 ]
-
-type Note = {
-  id: number
-  timestamp: string
-  category: string
-  title: string
-  content: string
-  pinned?: boolean
-  verifiedAt?: string | undefined
-  disputedAt?: string | undefined
-  retractedAt?: string | undefined
-  statusReason?: string | undefined
-  tags?: string | undefined
-  author?: string | undefined
-}
-
-type Revision = {
-  id: number
-  revisedAt: string
-  timestamp: string
-  category: string
-  title: string
-  content: string
-  tags?: string | undefined
-}
-
-type NoteDetail = {
-  note: Note
-  revisions: Revision[]
-}
 
 type FormState = {
   mode: "add" | "edit"
@@ -85,10 +61,13 @@ export function NotesView() {
   const [revisionsOpen, setRevisionsOpen] = createSignal(false)
   const [error, setError] = createSignal("")
   const [loading, setLoading] = createSignal(false)
+  const [saving, setSaving] = createSignal(false)
   const [formOpen, setFormOpen] = createSignal(false)
   const [form, setForm] = createSignal(defaultForm)
   const [notes, setNotes] = createSignal<Note[]>([])
   const [page, setPage] = createSignal(0)
+
+  const locale = () => ctx.locale.locale()
 
   /* ---------- loading ---------- */
   const loadNotes = async () => {
@@ -143,7 +122,7 @@ export function NotesView() {
 
   /* ---------- actions ---------- */
   const doAction = async (
-    fn: (a: any) => Promise<{ ok: boolean; error?: string | undefined; note?: Note | null }>,
+    fn: (a: any) => Promise<NoteResult>,
     arg: any
   ): Promise<void> => {
     try {
@@ -151,7 +130,7 @@ export function NotesView() {
       if (res.ok) {
         setSelectedId(null)
       } else {
-        setError(res.error ?? "action failed")
+        setError(res.error ?? "ação falhou")
       }
     } catch (e) {
       setError(String(e))
@@ -163,9 +142,10 @@ export function NotesView() {
   const handleAddOrEdit = async () => {
     const f = form()
     if (f.title.trim().length === 0 || f.content.trim().length === 0) {
-      setError("Title and content are required.")
+      setError("Título e conteúdo são obrigatórios.")
       return
     }
+    setSaving(true)
     try {
       const res =
         f.mode === "add"
@@ -188,11 +168,12 @@ export function NotesView() {
         setForm(defaultForm)
         void reloadSelected(res.note?.id ?? null)
       } else {
-        setError(res.error ?? "save failed")
+        setError(res.error ?? "falha ao salvar")
       }
     } catch (e) {
       setError(String(e))
     } finally {
+      setSaving(false)
       void loadNotes()
     }
   }
@@ -217,20 +198,38 @@ export function NotesView() {
 
   const id = selectedId()
   const confirm = () => id !== null && void doAction(api.confirm, id)
-  const dispute = () => {
+  const dispute = async () => {
     if (id === null) return
-    const why = prompt("Reason for disputing (why it looks wrong):")
+    const why = await ctx.dialogs.prompt({
+      title: "Questionar nota",
+      description: "Descreva por que a nota parece incorreta.",
+      placeholder: "ex.: desatualizada, contradiz a nota #123",
+      submit: "Questionar",
+    })
     if (why && why.trim()) void doAction(api.dispute, { id, reason: why.trim() })
   }
-  const retract = () => {
+  const retract = async () => {
     if (id === null) return
-    const why = prompt("Reason for retracting (optional):")
+    const why = await ctx.dialogs.prompt({
+      title: "Retirar nota",
+      description: "A nota passa a ser desconsiderada; pode ser restaurada depois.",
+      placeholder: "motivo (opcional)",
+      submit: "Retirar",
+    })
     void doAction(api.retract, { id, reason: why ? why.trim() : undefined })
   }
   const pin = () => id !== null && void doAction(api.pin, id)
   const unpin = () => id !== null && void doAction(api.unpin, id)
-  const restore = (rev: Revision) =>
-    id !== null && void doAction(api.restore, { id, revisionId: rev.id })
+  const restore = async (rev: Revision) => {
+    if (id === null) return
+    const ok = await ctx.dialogs.confirm({
+      title: "Restaurar revisão",
+      description: `A nota será restaurada para a revisão #${rev.id}. A versão atual passa a ser uma revisão anterior.`,
+      confirm: "Restaurar",
+      danger: true,
+    })
+    if (ok) void doAction(api.restore, { id, revisionId: rev.id })
+  }
 
   /* ---------- derived ---------- */
   const count = createMemo(() => notes().length)
@@ -241,22 +240,26 @@ export function NotesView() {
   })
   const revs = createMemo(() => detail()?.revisions ?? [])
 
+  const formatTime = (s: string) => {
+    const d = new Date(s)
+    if (Number.isNaN(d.getTime())) return s
+    return new Intl.DateTimeFormat(locale(), { dateStyle: "short", timeStyle: "short" }).format(d)
+  }
+
   /* ---------- render helpers ---------- */
   const trustBadges = (n: Note) => (
     <span class="badges">
       <Show when={n.pinned}>
-        <span class="badge pinned">📌 pinned</span>
+        <span class="badge badge-pinned">fixada</span>
       </Show>
       <Show when={n.retractedAt !== undefined}>
-        <span class="badge retracted">🚫 retracted</span>
+        <span class="badge badge-retracted">retirada</span>
       </Show>
       <Show when={n.disputedAt !== undefined}>
-        <span class="badge disputed">
-          ⚠ disputed{n.statusReason ?? ""}
-        </span>
+        <span class="badge badge-disputed">questionada</span>
       </Show>
       <Show when={n.verifiedAt !== undefined && n.retractedAt === undefined}>
-        <span class="badge verified">✔ verified</span>
+        <span class="badge badge-verified">verificada</span>
       </Show>
     </span>
   )
@@ -269,17 +272,19 @@ export function NotesView() {
     >
       <button class="note-head" onClick={() => toggleNote(n.id)}>
         <span class="note-id">#{n.id}</span>
-        <span class="note-cat">({n.category})</span>
-        <span class="note-title">{n.title}</span>
+        <span class="note-cat">{String(n.category).replace(/^#/, "")}</span>
+        <span class="note-title" title={n.title}>
+          {n.title}
+        </span>
         {trustBadges(n)}
-        <span class="chevron">▸</span>
+        <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
       </button>
       <Show when={selectedId() === n.id}>
         <div class="note-body">
           <div class="meta">
-            <span>{n.timestamp}</span>
+            <span>{formatTime(n.timestamp)}</span>
             <Show when={n.author}>
-              <span>by {n.author}</span>
+              <span>por {n.author}</span>
             </Show>
             <Show when={n.tags}>
               <span>· {n.tags}</span>
@@ -287,31 +292,46 @@ export function NotesView() {
           </div>
           <pre class="note-content">{n.content}</pre>
           <div class="actions">
-            <button class="btn" onClick={() => openEdit(n)}>✏ Edit</button>
-            <button class="btn" onClick={confirm}>✔ Confirm</button>
-            <button class="btn" onClick={dispute}>⚠ Dispute</button>
-            <button class="btn" onClick={retract}>🗑 Retract</button>
-            <button class="btn" onClick={pin}>📌 Pin</button>
-            <button class="btn" onClick={unpin}>📎 Unpin</button>
+            <ctx.ui.Button size="small" icon="edit" onClick={() => openEdit(n)}>
+              Editar
+            </ctx.ui.Button>
+            <ctx.ui.Button size="small" icon="circle-check" onClick={confirm}>
+              Confirmar
+            </ctx.ui.Button>
+            <ctx.ui.Button size="small" icon="outline-hexagonal-warning" onClick={dispute}>
+              Questionar
+            </ctx.ui.Button>
+            <ctx.ui.Button size="small" variant="danger" icon="trash" onClick={retract}>
+              Retirar
+            </ctx.ui.Button>
+            <ctx.ui.Button size="small" onClick={pin}>
+              {n.pinned ? "Desfixar" : "Fixar"}
+            </ctx.ui.Button>
           </div>
           <div class="revisions">
-            <button class="btn" onClick={() => setRevisionsOpen(!revisionsOpen())}>
-              {"Revisions"}{revs().length > 0 ? ` (${revs().length})` : ""}
-            </button>
+            <ctx.ui.Button size="small" variant="ghost-muted" icon="outline-rotate-clockwise" onClick={() => setRevisionsOpen(!revisionsOpen())}>
+              Revisões{revs().length > 0 ? ` · ${revs().length}` : ""}
+            </ctx.ui.Button>
             <Show when={revisionsOpen()}>
               <div class="rev-list">
                 <Show when={revs().length === 0}>
-                  <div class="muted">No previous versions.</div>
+                  <div class="muted">Sem versões anteriores.</div>
                 </Show>
                 {revs().map((r) => (
                   <div class="rev">
-                    <div>
-                      <b>rev #{r.id}</b> — {r.revisedAt} (valia desde {r.timestamp})
+                    <div class="rev-head">
+                      Revisão #{r.id} · {formatTime(r.revisedAt)} · válida desde{" "}
+                      {formatTime(r.timestamp)}
                     </div>
                     <pre class="note-content small">{r.content}</pre>
-                    <button class="btn small" onClick={() => restore(r)}>
-                      ↩ Restore
-                    </button>
+                    <ctx.ui.Button
+                      size="small"
+                      variant="ghost-muted"
+                      icon="arrow-undo-down"
+                      onClick={() => restore(r)}
+                    >
+                      Restaurar
+                    </ctx.ui.Button>
                   </div>
                 ))}
               </div>
@@ -326,97 +346,204 @@ export function NotesView() {
   return (
     <div class="notes-root">
       <style>{`
-        .notes-root { font-size: 13px; line-height: 1.45; padding: 8px; display: flex; flex-direction: column; gap: 10px; height: 100%; }
-        .notes-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .notes-title { font-weight: 600; }
-        .notes-count { opacity: .6; font-size: 12px; }
-        .btn { background: transparent; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font: inherit; color: inherit; cursor: pointer; opacity: .85; }
-        .btn:hover { opacity: 1; }
-        .btn:disabled { opacity: .4; cursor: default; }
-        .btn.small { padding: 2px 6px; font-size: 11px; }
-        .search-row { display: flex; gap: 8px; align-items: center; }
-        .search-box { flex: 1; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; padding: 4px 8px; }
-        .chips { display: flex; gap: 6px; flex-wrap: wrap; }
-        .chip { border: 1px solid currentColor; border-radius: 18px; padding: 2px 10px; background: transparent; color: inherit; font: inherit; cursor: pointer; opacity: .7; }
-        .chip.active { opacity: 1; font-weight: 600; }
+        .notes-root {
+          font-family: var(--font-family-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+          font-size: 13px;
+          line-height: 1.5;
+          color: var(--v2-text-text-base);
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          box-sizing: border-box;
+          padding: 8px 12px 6px;
+        }
+        .notes-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .notes-title { display: flex; align-items: center; gap: 6px; font-weight: 550; }
+        .notes-count { font-size: 12px; color: var(--v2-text-text-muted); }
+        .spacer { flex: 1; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
         .notes { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; min-height: 0; }
-        .note { flex: 0 0 auto; border: 1px solid currentColor; border-radius: 8px; background: transparent; overflow: hidden; }
-        .note.retracted { opacity: .5; }
-        .note.selected { box-shadow: inset 0 0 0 2px currentColor; }
-        .note-head { display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left; background: transparent; border: none; font: inherit; color: inherit; cursor: pointer; padding: 8px 10px; }
-        .note-head:hover { background: rgba(128,128,128,.08); }
-        .note-id { opacity: .7; font-weight: 600; }
-        .note-cat { opacity: .55; font-size: 11px; }
-        .note-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .badges { display: flex; gap: 4px; }
-        .badge { font-size: 10px; border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; opacity: .8; }
-        .chevron { opacity: .6; }
-        .note-body { padding: 6px 10px; border-top: 1px solid currentColor; }
-        .meta { font-size: 11px; opacity: .65; display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-        .note-content { margin: 0; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; max-height: 320px; overflow-y: auto; }
-        .note-content.small { max-height: 160px; font-size: 11px; }
-        .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        .actions .btn { opacity: .8; }
-        .revisions { margin-top: 8px; }
-        .rev-list { margin-top: 6px; display: flex; flex-direction: column; gap: 8px; }
-        .rev { border: 1px solid currentColor; border-radius: 6px; padding: 6px 8px; }
-        .rev b { font-size: 11px; }
-        .muted { opacity: .5; font-size: 11px; }
-        .err { border: 1px solid currentColor; border-radius: 6px; padding: 6px 8px; font-size: 12px; opacity: .9; }
-        .empty { opacity: .5; text-align: center; padding: 20px; }
-        .form { border: 1px solid currentColor; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-        .form label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; opacity: .8; }
-        .form input, .form select, .form textarea { border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: inherit; padding: 4px 6px; }
-        .form textarea { resize: vertical; min-height: 90px; }
-        .loading { opacity: .5; font-size: 12px; }
-        .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding-top: 2px; }
+        .note {
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          background: transparent;
+          overflow: hidden;
+          flex: 0 0 auto;
+        }
+        .note.retracted { opacity: 0.55; }
+        .note.selected { border-color: var(--v2-border-border-focus); }
+        .note-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          text-align: left;
+          background: transparent;
+          border: 0;
+          font: inherit;
+          color: inherit;
+          cursor: pointer;
+          box-sizing: border-box;
+          min-height: 32px;
+          padding: 5px 12px;
+        }
+        .note-head:hover { background: var(--v2-overlay-simple-overlay-hover); }
+        .note-head:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
+        .note-id { font-weight: 550; color: var(--v2-text-text-muted); }
+        .note-cat { font-size: 11px; color: var(--v2-text-text-faint); }
+        .note-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .badges { display: flex; gap: 4px; flex: 0 0 auto; }
+        .badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
+        .badge-pinned { border: 1px solid var(--v2-border-border-muted); color: var(--v2-icon-icon-base); }
+        .badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
+        .badge-retracted { border: 1px solid var(--v2-state-border-danger); color: var(--v2-state-fg-danger); }
+        .badge-disputed { border: 1px solid var(--v2-state-border-warning); color: var(--v2-state-fg-warning); }
+        .note-body { padding: 8px 12px 12px; border-top: 1px solid var(--v2-border-border-muted); }
+        .meta {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          font-size: 11.5px;
+          color: var(--v2-text-text-faint);
+          margin-bottom: 6px;
+        }
+        .note-content {
+          margin: 0;
+          white-space: pre-wrap;
+          font-family: var(--font-family-code);
+          font-size: 12.5px;
+          line-height: 1.5;
+          color: var(--v2-text-text-muted);
+          max-height: 280px;
+          overflow-y: auto;
+        }
+        .note-content.small { max-height: 120px; font-size: 11.5px; }
+        .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+        .revisions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+        .rev { border: 1px solid var(--v2-border-border-muted); border-radius: 4px; padding: 8px; }
+        .rev-head { font-size: 11.5px; font-weight: 550; color: var(--v2-text-text-faint); margin-bottom: 4px; }
+        .rev-list { display: flex; flex-direction: column; gap: 8px; }
+        .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 8px; color: var(--v2-text-text-faint); text-align: center; }
+        .empty-icon { opacity: 0.55; margin-bottom: 4px; }
+        .muted { font-size: 11.5px; color: var(--v2-text-text-faint); text-align: center; }
+        .err {
+          border: 1px solid var(--v2-state-border-danger);
+          border-radius: 4px;
+          padding: 8px 10px;
+          margin-bottom: 4px;
+          font-size: 12.5px;
+          color: var(--v2-state-fg-danger);
+        }
+        .form {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          background: var(--v2-background-bg-base);
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          padding: 12px;
+          margin-bottom: 6px;
+        }
+        .form > label {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          font-size: 12px;
+          font-weight: 550;
+          color: var(--v2-text-text-muted);
+        }
+        .form textarea {
+          resize: vertical;
+          min-height: 90px;
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          background: transparent;
+          color: var(--v2-text-text-base);
+          font-family: var(--font-family-code);
+          font-size: 12.5px;
+          line-height: 1.5;
+          padding: 6px 8px;
+          white-space: pre-wrap;
+        }
+        .form select {
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          background: transparent;
+          color: var(--v2-text-text-base);
+          font: inherit;
+          padding: 4px 6px;
+        }
+        .form textarea:focus,
+        .form select:focus {
+          outline: 2px solid var(--v2-border-border-focus);
+          outline-offset: 0;
+          background: transparent;
+        }
+        .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 4px 6px; }
+        .page-label { font-size: 11.5px; color: var(--v2-text-text-faint); }
       `}</style>
 
       <header class="notes-head">
-        <span class="notes-title">📚 Notes</span>
-        <span class="notes-count">{count()}</span>
-        <span style={{ flex: 1 }} />
-        <button class="btn" onClick={openAdd}>+ New note</button>
+        <span class="notes-title">
+          <ctx.ui.Icon name="file-document" size="small" />
+          Notas
+        </span>
+        <span class="notes-count">{count()} notas</span>
+        <span class="spacer" />
+        <ctx.ui.Button variant="contrast" icon="plus" onClick={openAdd}>
+          Nova nota
+        </ctx.ui.Button>
       </header>
 
       <div class="search-row">
-        <input
-          class="search-box"
-          placeholder="Search memory…"
+        <ctx.ui.TextInput
+          type="search"
+          label="Buscar notas"
+          placeholder="Buscar na memória…"
           value={query()}
-          onInput={(e) => setQuery(e.currentTarget.value)}
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key === "Escape") setQuery("")
-          }}
+          onInput={setQuery}
         />
       </div>
 
       <div class="chips">
-        <button class={`chip ${!pinnedOnly() ? "active" : ""}`} onClick={() => setPinnedOnly(false)}>
-          All
-        </button>
-        <button class={`chip ${pinnedOnly() ? "active" : ""}`} onClick={() => setPinnedOnly(!pinnedOnly())}>
-          Pinned
-        </button>
-        <button class={`chip ${showRetracted() ? "active" : ""}`} onClick={() => setShowRetracted(!showRetracted())}>
-          Retracted
-        </button>
+        <ctx.ui.Button
+          size="small"
+          variant={pinnedOnly() ? "ghost-muted" : "neutral"}
+          onClick={() => setPinnedOnly(false)}
+        >
+          Todas
+        </ctx.ui.Button>
+        <ctx.ui.Button
+          size="small"
+          variant={pinnedOnly() ? "neutral" : "ghost-muted"}
+          onClick={() => setPinnedOnly(!pinnedOnly())}
+        >
+          Fixadas
+        </ctx.ui.Button>
+        <ctx.ui.Button
+          size="small"
+          variant={showRetracted() ? "neutral" : "ghost-muted"}
+          onClick={() => setShowRetracted(!showRetracted())}
+        >
+          Retiradas
+        </ctx.ui.Button>
       </div>
 
       <Show when={loading()}>
-        <div class="loading">loading…</div>
+        <div class="loader-row">
+          <ctx.ui.Loader size="small" />
+          <span>Carregando…</span>
+        </div>
       </Show>
       <Show when={error() !== ""}>
         <div class="err">{error()}</div>
       </Show>
 
       <Show when={formOpen()}>
-        <form
-          class="form"
-          onSubmit={(e) => { e.preventDefault(); void handleAddOrEdit() }}
-        >
+        <form class="form" onSubmit={(e) => { e.preventDefault(); void handleAddOrEdit() }}>
           <label>
-            Category
+            Categoria
             <select
               value={form().category}
               onChange={(e) => setForm((s) => ({ ...s, category: e.currentTarget.value }))}
@@ -427,46 +554,52 @@ export function NotesView() {
             </select>
           </label>
           <label>
-            Title
-            <input
+            Título
+            <ctx.ui.TextInput
+              label="Título"
               value={form().title}
-              onInput={(e) => setForm((s) => ({ ...s, title: e.currentTarget.value }))}
+              onInput={(v) => setForm((s) => ({ ...s, title: v }))}
+              onSubmit={handleAddOrEdit}
             />
           </label>
           <label>
-            Content
+            Conteúdo
             <textarea
               value={form().content}
               onInput={(e) => setForm((s) => ({ ...s, content: e.currentTarget.value }))}
+              placeholder="Registre aqui o que precisa lembrar…"
             />
           </label>
           <label>
             Tags
-            <input
+            <ctx.ui.TextInput
+              label="Tags"
+              placeholder="palavras-chave separadas por espaço"
               value={form().tags}
-              placeholder="space-separated keywords"
-              onInput={(e) => setForm((s) => ({ ...s, tags: e.currentTarget.value }))}
+              onInput={(v) => setForm((s) => ({ ...s, tags: v }))}
             />
           </label>
           <label>
-            Author
-            <input
+            Autor
+            <ctx.ui.TextInput
+              label="Autor"
+              placeholder="quem registrou (opcional)"
               value={form().author}
-              placeholder="who registered this (optional)"
-              onInput={(e) => setForm((s) => ({ ...s, author: e.currentTarget.value }))}
+              onInput={(v) => setForm((s) => ({ ...s, author: v }))}
             />
           </label>
           <div class="form-actions">
-            <button class="btn" onClick={() => setFormOpen(false)}>
-              Cancel
-            </button>
-            <button
-              class="btn"
+            <ctx.ui.Button variant="ghost" onClick={() => setFormOpen(false)}>
+              Cancelar
+            </ctx.ui.Button>
+            <ctx.ui.Button
+              variant="contrast"
               type="submit"
+              busy={saving()}
               disabled={!form().title.trim() || !form().content.trim()}
             >
-              {form().mode === "add" ? "Add note" : "Save changes"}
-            </button>
+              {form().mode === "add" ? "Adicionar nota" : "Salvar alterações"}
+            </ctx.ui.Button>
           </div>
         </form>
       </Show>
@@ -474,7 +607,23 @@ export function NotesView() {
       <div class="notes">
         <Show when={notes().length === 0 && !loading()}>
           <div class="empty">
-            No notes{query().trim() ? ` matching “${query()}”` : ""} yet.
+            <ctx.ui.Icon name="file-document" size="large" class="empty-icon" />
+            <div>
+              <Show when={query().trim()}>
+                Nenhuma nota corresponde a "{query().trim()}".
+              </Show>
+              <Show when={!query().trim()}>
+                Nenhuma nota ainda.
+              </Show>
+            </div>
+            <div class="muted">
+              <Show when={query().trim()}>
+                Ajuste a busca ou os filtros.
+              </Show>
+              <Show when={!query().trim()}>
+                Registre a primeira com "Nova nota".
+              </Show>
+            </div>
           </div>
         </Show>
         {pagedNotes().map((n) => card(n))}
@@ -482,19 +631,25 @@ export function NotesView() {
 
       <Show when={pageCount() > 1}>
         <div class="pager">
-          <button class="btn small" disabled={page() === 0} onClick={() => setPage(page() - 1)}>
-            ← Prev
-          </button>
-          <span class="muted">
-            Page {page() + 1} / {pageCount()}
-          </span>
-          <button
-            class="btn small"
+          <ctx.ui.Button
+            size="small"
+            variant="ghost-muted"
+            icon="outline-arrow-left"
+            disabled={page() === 0}
+            onClick={() => setPage(page() - 1)}
+          >
+            Anterior
+          </ctx.ui.Button>
+          <span class="page-label">Página {page() + 1} de {pageCount()}</span>
+          <ctx.ui.Button
+            size="small"
+            variant="ghost-muted"
+            icon="outline-arrow-right"
             disabled={page() >= pageCount() - 1}
             onClick={() => setPage(page() + 1)}
           >
-            Next →
-          </button>
+            Próxima
+          </ctx.ui.Button>
         </div>
       </Show>
     </div>
