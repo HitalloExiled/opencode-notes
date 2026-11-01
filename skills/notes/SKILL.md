@@ -86,6 +86,7 @@ notes unpin <id>   # stop injecting it (still searchable)
 - **Starting work** on a project with relevant history: run `notes search` before acting (documented facts, not conversation recall).
 - **Resolving a non-trivial problem**: register symptom → cause → solution (section below). This is the most important rule of the skill.
 - **Making important decisions** (architecture, trade-offs, non-obvious configuration): record with category `#decision`.
+- **Learning a durable fact about the user** (name, how to address them, preferences, standing context, goals): register a `#user` note scoped `machine`, and pin it when it should carry into every session — the agent decides against the 12-pin budget.
 - **Generating reusable snippets/configurations**: `#snippet` / `#config`.
 - **Never delete or overwrite the memory database.** If the user asks to clear the history, direct them to run maintenance manually in their own terminal — do not do it yourself, and these are not CLI commands exposed here. `notes.update` edits one note in place and snapshots the previous version (recoverable via `notes.history`/`notes.restore`); it is not a wipe.
 
@@ -197,7 +198,8 @@ get `retract`. `update` stays reserved for genuine corrections.
 
 ## Conventions
 
-- **Categories**: `#problem`, `#decision`, `#config`, `#snippet`, `#architecture`, `#general`.
+- **Categories**: `#problem`, `#decision`, `#config`, `#snippet`, `#architecture`, `#user`, `#general`.
+- **User notes (`#user`)**: facts about the user (name, how to address them, preferences, standing context, goals, projects, working style). Always scope `machine` (matches every machine, so it is injectable when pinned) — never `global`, which is excluded from injection. The agent pins only the ones that matter across sessions, against the fixed 12-pin budget; unpinned user notes stay searchable via `notes search "#user"`.
 - **Scope**: how far the fact applies — `global` (machine-independent; the default, may be omitted), `project:<name>`, or `machine:<name>`. Scope is orthogonal to category and tags: it tells a reader on another machine *where* the fact applies, not whether it should have been registered at all.
 - **Tags**: keywords separated by space, without `#` (e.g.: `selinux module`).
 - **Title**: short and specific — for problems, describe the symptom (e.g. "sandbox TUI fails without exec on /tmp").
