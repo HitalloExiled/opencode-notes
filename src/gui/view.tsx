@@ -142,8 +142,21 @@ function MultiSelect(props: MultiSelectProps) {
             </button>
           </Show>
         </div>
+        <div class="filter-panel-search">
+          <input
+            type="text"
+            class="filter-panel-search-input"
+            placeholder="Filtrar…"
+            aria-label={`Filtrar ${label.toLowerCase()}`}
+            value={search()}
+            onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+          />
+        </div>
         <div class="filter-panel-list">
-          {options.map((opt) => (
+          <Show when={search().trim() !== "" && visibleOptions().length === 0}>
+            <div class="filter-empty">nada</div>
+          </Show>
+          {visibleOptions().map((opt) => (
             <label class="filter-option">
               <input
                 type="checkbox"
@@ -801,6 +814,24 @@ export function NotesView() {
           background: var(--v2-background-bg-base);
         }
         .filter-panel-list { display: flex; flex-direction: column; gap: 2px; padding: 4px; }
+        /* Free-text option filter, shown between the head and the list. */
+        .filter-panel-search { padding: 4px 8px; }
+        .filter-panel-search-input {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 3px 6px;
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-base);
+          font: inherit;
+          font-size: 12.5px;
+        }
+        .filter-panel-search-input:focus {
+          outline: 2px solid var(--v2-border-border-focus);
+          outline-offset: 0;
+        }
+        .filter-empty { padding: 12px 8px; font-size: 12.5px; color: var(--v2-text-text-faint); }
         .filter-option {
           display: flex;
           align-items: center;
