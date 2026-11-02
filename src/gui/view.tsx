@@ -73,8 +73,10 @@ type MultiSelectProps = {
   value: string[]
   onValueChange: (v: string[]) => void
   // Reactive "is this combo open" source: the shared `openFilter` accessor
-  // plus which combo this is. We memo it inside so <Show when={open}> is
-  // tracked reactively (a plain boolean prop would not be tracked by <Show>).
+  // plus which combo this is. We memo it inside and CALL it at the <Show>
+  // (`when={open()}`). Passing the memo uncalled would hand <Show> the
+  // function (always truthy) instead of its boolean, so the panel would be
+  // stuck open.
   openFilter: Accessor<string | null>
   which: "scope" | "tag"
   onOpenChange: () => void
@@ -116,7 +118,7 @@ function MultiSelect(props: MultiSelectProps) {
         <span class="filter-btn-caret" aria-hidden="true" />
       </button>
 
-      <Show when={open}>
+      <Show when={open()}>
         <div class="filter-panel">
           <div class="filter-panel-head">
             <span class="filter-panel-title">{label}</span>
