@@ -630,16 +630,22 @@ export function NotesView() {
         .form select {
           border: 1px solid var(--v2-border-border-muted);
           border-radius: 4px;
-          background: transparent;
+          background: var(--v2-background-bg-layer-02);
           color: var(--v2-text-text-base);
           font: inherit;
           padding: 4px 6px;
+        }
+        /* The native dropdown paints its own white surface on Linux, so the
+           options must carry the theme colors or their text washes out. */
+        .form select option {
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-base);
         }
         .form textarea:focus,
         .form select:focus {
           outline: 2px solid var(--v2-border-border-focus);
           outline-offset: 0;
-          background: transparent;
+          background: var(--v2-background-bg-layer-02);
         }
         .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
         .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 4px 6px; }
