@@ -125,21 +125,30 @@ export function NotesView() {
   }
 
   /* ---------- actions ---------- */
+  // Runs a write, refreshes the list and the open note, then reports the
+  // outcome. The refresh clears `error` on purpose, so the message is set
+  // after it — otherwise a failure would be erased before it renders.
   const doAction = async (
     fn: (a: any) => Promise<NoteResult>,
-    arg: any
+    arg: any,
+    done: string
   ): Promise<void> => {
     try {
       const res = await fn(arg)
-      if (res.ok) {
-        setSelectedId(null)
-      } else {
-        setError(res.error ?? "ação falhou")
+      await loadNotes()
+      if (!res.ok) {
+        const message = res.error ?? "ação falhou"
+        setError(message)
+        ctx.toast.show({ title: done, description: message, variant: "error" })
+        return
       }
+      await reloadSelected(selectedId())
+      ctx.toast.show({ title: done, variant: "success" })
     } catch (e) {
-      setError(String(e))
-    } finally {
-      void loadNotes()
+      const message = String(e)
+      await loadNotes()
+      setError(message)
+      ctx.toast.show({ title: done, description: message, variant: "error" })
     }
   }
 
@@ -200,39 +209,63 @@ export function NotesView() {
     setFormOpen(true)
   }
 
-  const id = selectedId()
-  const confirm = () => id !== null && void doAction(api.confirm, id)
+  // A getter, not `selectedId()`: the actions are built once, when the view
+  // mounts, so a plain read would freeze the selection at `null` and every
+  // button would return early.
+  const id = () => selectedId()
+  const confirm = () => {
+    const current = id()
+    if (current !== null) void doAction(api.confirm, current, "Nota confirmada")
+  }
   const dispute = async () => {
-    if (id === null) return
+    const current = id()
+    if (current === null) return
     const why = await ctx.dialogs.prompt({
       title: "Questionar nota",
       description: "Descreva por que a nota parece incorreta.",
       placeholder: "ex.: desatualizada, contradiz a nota #123",
       submit: "Questionar",
     })
-    if (why && why.trim()) void doAction(api.dispute, { id, reason: why.trim() })
+    if (why && why.trim()) {
+      void doAction(api.dispute, { id: current, reason: why.trim() }, "Nota questionada")
+    }
   }
   const retract = async () => {
-    if (id === null) return
+    const current = id()
+    if (current === null) return
     const why = await ctx.dialogs.prompt({
       title: "Retirar nota",
       description: "A nota passa a ser desconsiderada; pode ser restaurada depois.",
       placeholder: "motivo (opcional)",
       submit: "Retirar",
     })
-    void doAction(api.retract, { id, reason: why ? why.trim() : undefined })
+    if (why === undefined) return
+    void doAction(
+      api.retract,
+      { id: current, reason: why.trim() || undefined },
+      "Nota retirada"
+    )
   }
-  const pin = () => id !== null && void doAction(api.pin, id)
-  const unpin = () => id !== null && void doAction(api.unpin, id)
+  const pin = () => {
+    const current = id()
+    if (current !== null) void doAction(api.pin, current, "Nota fixada")
+  }
+  const unpin = () => {
+    const current = id()
+    if (current !== null) void doAction(api.unpin, current, "Nota desfixada")
+  }
   const restore = async (rev: Revision) => {
-    if (id === null) return
+    const current = id()
+    if (current === null) return
     const ok = await ctx.dialogs.confirm({
       title: "Restaurar revisão",
       description: `A nota será restaurada para a revisão #${rev.id}. A versão atual passa a ser uma revisão anterior.`,
       confirm: "Restaurar",
       danger: true,
     })
-    if (ok) void doAction(api.restore, { id, revisionId: rev.id })
+    if (ok) {
+      void doAction(api.restore, { id: current, revisionId: rev.id }, "Revisão restaurada")
+    }
   }
 
   /* ---------- derived ---------- */
@@ -364,26 +397,32 @@ export function NotesView() {
           </div>
           <pre class="note-content">{n.content}</pre>
           <div class="actions">
-            <ctx.ui.Button size="small" icon="edit" onClick={() => openEdit(n)}>
+            <button class="btn-app" onClick={() => openEdit(n)}>
+              <ctx.ui.Icon name="edit" size="small" />
               Editar
-            </ctx.ui.Button>
-            <ctx.ui.Button size="small" icon="circle-check" onClick={confirm}>
+            </button>
+            <button class="btn-app" onClick={confirm}>
+              <ctx.ui.Icon name="circle-check" size="small" />
               Confirmar
-            </ctx.ui.Button>
-            <ctx.ui.Button size="small" icon="outline-hexagonal-warning" onClick={dispute}>
+            </button>
+            <button class="btn-app" onClick={dispute}>
+              <ctx.ui.Icon name="outline-hexagonal-warning" size="small" />
               Questionar
-            </ctx.ui.Button>
-            <ctx.ui.Button size="small" variant="danger" icon="trash" onClick={retract}>
+            </button>
+            <button class="btn-app is-danger" onClick={retract}>
+              <ctx.ui.Icon name="trash" size="small" />
               Retirar
-            </ctx.ui.Button>
-            <ctx.ui.Button size="small" onClick={pin}>
+            </button>
+            <button class="btn-app" onClick={n.pinned ? unpin : pin}>
+              <ctx.ui.Icon name={n.pinned ? "close-small" : "lock"} size="small" />
               {n.pinned ? "Desfixar" : "Fixar"}
-            </ctx.ui.Button>
+            </button>
           </div>
           <div class="revisions">
-            <ctx.ui.Button size="small" variant="ghost-muted" icon="outline-rotate-clockwise" onClick={() => setRevisionsOpen(!revisionsOpen())}>
+            <button class="btn-app" onClick={() => setRevisionsOpen(!revisionsOpen())}>
+              <ctx.ui.Icon name="outline-rotate-clockwise" size="small" />
               Revisões{revs().length > 0 ? ` · ${revs().length}` : ""}
-            </ctx.ui.Button>
+            </button>
             <Show when={revisionsOpen()}>
               <div class="rev-list">
                 <Show when={revs().length === 0}>
@@ -396,14 +435,10 @@ export function NotesView() {
                       {formatTime(r.timestamp)}
                     </div>
                     <pre class="note-content small">{r.content}</pre>
-                    <ctx.ui.Button
-                      size="small"
-                      variant="ghost-muted"
-                      icon="arrow-undo-down"
-                      onClick={() => restore(r)}
-                    >
+                    <button class="btn-app" onClick={() => restore(r)}>
+                      <ctx.ui.Icon name="arrow-undo-down" size="small" />
                       Restaurar
-                    </ctx.ui.Button>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -578,6 +613,10 @@ export function NotesView() {
         .btn-app:hover {
           background: var(--v2-overlay-simple-overlay-hover);
           color: var(--v2-text-text-base);
+        }
+        .btn-app.is-danger:hover {
+          background: var(--v2-state-bg-danger);
+          color: var(--v2-state-fg-danger);
         }
         .btn-app:focus-visible {
           outline: 2px solid var(--v2-border-border-focus);
