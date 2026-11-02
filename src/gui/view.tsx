@@ -88,9 +88,15 @@ function MultiSelect(props: MultiSelectProps) {
   // shared `openFilter` so only one combo is open at a time.
   const open = createMemo(() => openFilter() === which)
 
-  const toggle = (opt: string) => {
-    const has = value.includes(opt)
-    onValueChange(has ? value.filter((v) => v !== opt) : [...value, opt])
+  // Derive the next selection from the checkbox's actual post-click state
+  // (e.target.checked), not from a render-time snapshot. This ties the note
+  // filter directly to what the user sees in the dropdown: if they uncheck,
+  // the DOM `checked` is false -> we drop the option -> the filter narrows /
+  // clears, even in the worst case.
+  const toggle = (opt: string, checked: boolean) => {
+    const current = value
+    if (checked) onValueChange(current.includes(opt) ? current : [...current, opt])
+    else onValueChange(current.filter((v) => v !== opt))
   }
   const clear = () => onValueChange([])
 
@@ -142,7 +148,7 @@ function MultiSelect(props: MultiSelectProps) {
               <input
                 type="checkbox"
                 checked={value.includes(opt)}
-                onChange={() => toggle(opt)}
+                onChange={(e) => toggle(opt, e.target.checked)}
               />
               <span>{opt}</span>
             </label>

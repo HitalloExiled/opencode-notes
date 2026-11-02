@@ -83,17 +83,20 @@ function buildScopeFilter() {
     for (const { el, opt } of boxes) el.checked = scopeFilter().includes(opt);
   };
 
-  // The component's toggle: reads the signal (never the DOM), then writes a
-  // new selection array.
-  const toggle = (opt: string) => {
+  // The component's toggle: reads the checkbox's post-click state (the DOM
+  // `checked`), not a render-time snapshot — the hardened handler.
+  const toggle = (opt: string, checked: boolean) => {
     const value = scopeFilter();
-    const has = value.includes(opt);
-    setScopeFilter(has ? value.filter((v) => v !== opt) : [...value, opt]);
+    setScopeFilter(
+      checked ? (value.includes(opt) ? value : [...value, opt]) : value.filter((v) => v !== opt)
+    );
     patchChecked();
   };
 
   for (const { el, opt } of boxes) {
-    el.addEventListener("change", () => toggle(opt));
+    el.addEventListener("change", (e) =>
+      toggle(opt, (e.target as HTMLInputElement).checked)
+    );
   }
 
   // Reactive patch of `checked` whenever scopeFilter changes (mirrors Solid
