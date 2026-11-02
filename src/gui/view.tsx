@@ -19,7 +19,6 @@ import { NotesApi } from "./contract"
 import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
 import {
   applyFilters,
-  displayOf,
   filterByQuery,
   pruneSelection,
   tagsOf,
@@ -70,7 +69,10 @@ type MultiSelectProps = {
   label: string
   placeholder: string
   options: string[]
-  value: string[]
+  // Live selection as a reactive accessor (not a snapshot array): this makes
+  // checked={value().includes(opt)} a tracked getter that re-syncs the DOM
+  // whenever the selection changes, instead of going stale.
+  value: Accessor<string[]>
   onValueChange: (v: string[]) => void
   // Reactive "is this combo open" source: the shared `openFilter` accessor
   // plus which combo this is. We memo it inside and CALL it at the <Show>
@@ -94,16 +96,11 @@ function MultiSelect(props: MultiSelectProps) {
   // the DOM `checked` is false -> we drop the option -> the filter narrows /
   // clears, even in the worst case.
   const toggle = (opt: string, checked: boolean) => {
-    const current = value
+    const current = value()
     if (checked) onValueChange(current.includes(opt) ? current : [...current, opt])
     else onValueChange(current.filter((v) => v !== opt))
   }
   const clear = () => onValueChange([])
-
-  // Compact display on the button: placeholder when empty, else up to two
-  // values plus a "+N" count, so long selections still fit the chip. The text
-  // logic is pure (src/gui/filters.ts) and unit-tested.
-  const display = createMemo(() => displayOf(value, placeholder))
 
   // Free-text search that narrows the options shown in the dropdown. Reset on
   // close so stale text never carries into the next open; the *selection*
@@ -125,12 +122,24 @@ function MultiSelect(props: MultiSelectProps) {
           aria-label={label}
           onClick={onOpenChange}
         >
-          <span class={`filter-btn-label ${value.length === 0 ? "is-placeholder" : ""}`}>
-            {display()}
-          </span>
+          <div class="filter-btn-content">
+            <Show when={value().length === 0}>
+              <span class="filter-btn-label is-placeholder">{placeholder}</span>
+            </Show>
+            <Show when={value().length > 0}>
+              <span class="tags">
+                {value().slice(0, 2).map((opt) => (
+                  <span class="tag">{opt}</span>
+                ))}
+                {value().length > 2 && (
+                  <span class="tag tag-more">+{value().length - 2}</span>
+                )}
+              </span>
+            </Show>
+          </div>
           <span class="filter-btn-caret" aria-hidden="true" />
         </button>
-        <Show when={value.length > 0}>
+        <Show when={value().length > 0}>
           <button
             class="filter-clear"
             type="button"
@@ -148,7 +157,7 @@ function MultiSelect(props: MultiSelectProps) {
       >
         <div class="filter-panel-head">
           <span class="filter-panel-title">{label}</span>
-          <Show when={value.length > 0}>
+          <Show when={value().length > 0}>
             <button class="btn-app is-ghost" type="button" onClick={clear}>
               Limpar
             </button>
@@ -172,7 +181,7 @@ function MultiSelect(props: MultiSelectProps) {
             <label class="filter-option">
               <input
                 type="checkbox"
-                checked={value.includes(opt)}
+                checked={value().includes(opt)}
                 onChange={(e) => toggle(opt, e.target.checked)}
               />
               <span>{opt}</span>
@@ -788,6 +797,8 @@ export function NotesView() {
           white-space: nowrap;
         }
         .filter-btn-label.is-placeholder { color: var(--v2-text-text-faint); font-style: italic; }
+        /* Groups the placeholder/chips on the left; the caret sits at the end. */
+        .filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
         .filter-btn-caret {
           flex: 0 0 auto;
           width: 8px;
@@ -1135,7 +1146,7 @@ export function NotesView() {
               label="Escopo"
               placeholder="Todos os escopos"
               options={scopeOptions()}
-              value={scopeFilter()}
+              value={scopeFilter}
               onValueChange={setScopeFilter}
               openFilter={openFilter}
               which="scope"
@@ -1147,7 +1158,7 @@ export function NotesView() {
               label="Tag"
               placeholder="Todas as tags"
               options={tagOptions()}
-              value={tagFilter()}
+              value={tagFilter}
               onValueChange={setTagFilter}
               openFilter={openFilter}
               which="tag"
