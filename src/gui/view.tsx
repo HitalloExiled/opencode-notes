@@ -12,6 +12,7 @@
  */
 
 import { createEffect, createMemo, createSignal } from "solid-js"
+import type { Accessor } from "solid-js"
 import { Show } from "solid-js"
 import { usePlugin } from "@opencode/plugin/gui"
 import { NotesApi } from "./contract"
@@ -71,12 +72,19 @@ type MultiSelectProps = {
   options: string[]
   value: string[]
   onValueChange: (v: string[]) => void
-  open: boolean
+  // Reactive "is this combo open" source: the shared `openFilter` accessor
+  // plus which combo this is. We memo it inside so <Show when={open}> is
+  // tracked reactively (a plain boolean prop would not be tracked by <Show>).
+  openFilter: Accessor<string | null>
+  which: "scope" | "tag"
   onOpenChange: () => void
 }
 
 function MultiSelect(props: MultiSelectProps) {
-  const { label, placeholder, options, value, onValueChange, open, onOpenChange } = props
+  const { label, placeholder, options, value, onValueChange, openFilter, which, onOpenChange } = props
+  // Reactive open state (memo => a signal <Show> can track), driven by the
+  // shared `openFilter` so only one combo is open at a time.
+  const open = createMemo(() => openFilter() === which)
 
   const toggle = (opt: string) => {
     const has = value.includes(opt)
@@ -98,7 +106,7 @@ function MultiSelect(props: MultiSelectProps) {
       <button
         class="filter-btn"
         type="button"
-        aria-expanded={open}
+        aria-expanded={open()}
         aria-label={label}
         onClick={onOpenChange}
       >
@@ -1021,7 +1029,8 @@ export function NotesView() {
               options={scopeOptions()}
               value={scopeFilter()}
               onValueChange={setScopeFilter}
-              open={openFilter() === "scope"}
+              openFilter={openFilter}
+              which="scope"
               onOpenChange={() => toggleFilter("scope")}
             />
           </Show>
@@ -1032,7 +1041,8 @@ export function NotesView() {
               options={tagOptions()}
               value={tagFilter()}
               onValueChange={setTagFilter}
-              open={openFilter() === "tag"}
+              openFilter={openFilter}
+              which="tag"
               onOpenChange={() => toggleFilter("tag")}
             />
           </Show>
