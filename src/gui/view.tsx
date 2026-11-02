@@ -20,6 +20,7 @@ import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
 import {
   applyFilters,
   displayOf,
+  filterByQuery,
   pruneSelection,
   tagsOf,
 } from "./filters"
@@ -97,6 +98,16 @@ function MultiSelect(props: MultiSelectProps) {
   // values plus a "+N" count, so long selections still fit the chip. The text
   // logic is pure (src/gui/filters.ts) and unit-tested.
   const display = createMemo(() => displayOf(value, placeholder))
+
+  // Free-text search that narrows the options shown in the dropdown. Reset on
+  // close so stale text never carries into the next open; the *selection*
+  // (value) is intentionally untouched by the search, so checked options survive
+  // both the filter and clearing it.
+  const [search, setSearch] = createSignal("")
+  createEffect(() => {
+    if (!open()) setSearch("")
+  })
+  const visibleOptions = createMemo(() => filterByQuery(options, search()))
 
   return (
     <div class="filter-cell">

@@ -95,3 +95,23 @@ export function displayOf(values: readonly string[], placeholder: string): strin
   if (n <= 2) return firstTwo
   return `${firstTwo} +${n - 2}`
 }
+
+/**
+ * Narrow a combo's option list by a free-text search term (the input shown at
+ * the top of the dropdown). Matching is case-insensitive substring; an empty/
+ * whitespace-only term returns every option unchanged (same reference, so no
+ * re-render work). Order is preserved.
+ *
+ * Pure so the combo can test exactly which options are visible for a query
+ * without a DOM. The reactive view only passes `query()` through here — the
+ * *selection* state (`value`) is never touched by a search, so unchecking/
+ * re-checking survives the text filter.
+ */
+export function filterByQuery(
+  options: readonly string[],
+  q: string
+): readonly string[] {
+  const term = q.trim().toLowerCase()
+  if (!term) return options
+  return options.filter((o) => o.toLowerCase().includes(term))
+}

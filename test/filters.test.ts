@@ -14,6 +14,7 @@ import {
   arraysSame,
   applyFilters,
   displayOf,
+  filterByQuery,
   pruneSelection,
   tagsOf,
 } from "../src/gui/filters";
@@ -222,5 +223,41 @@ describe("displayOf", () => {
 
   test("long selection stays bounded", () => {
     expect(displayOf(["a", "b", "c", "d", "e"], "Todos")).toBe("a, b +3");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* filterByQuery — the combo's free-text option filter                   */
+/* ------------------------------------------------------------------ */
+
+describe("filterByQuery", () => {
+  const opts = ["alpha", "beta", "gamma", "Gamma2", "DELTA"];
+
+  test("empty / whitespace term -> every option, same reference", () => {
+    expect(filterByQuery(opts, "")).toBe(opts);
+    expect(filterByQuery(opts, "   ")).toBe(opts);
+    expect(filterByQuery(opts, "")).toEqual(opts);
+  });
+
+  test("term matches by case-insensitive substring", () => {
+    expect(filterByQuery(opts, "gamma")).toEqual(["gamma", "Gamma2"]);
+    expect(filterByQuery(opts, "GAMMA")).toEqual(["gamma", "Gamma2"]);
+    // ("beta" also contains "a" -> every option matches)
+    expect(filterByQuery(opts, "a")).toEqual(["alpha", "beta", "gamma", "Gamma2", "DELTA"]);
+  });
+
+  test("prefix/partial match", () => {
+    expect(filterByQuery(opts, "de")).toEqual(["DELTA"]);
+  });
+
+  test("no match -> empty list (order preserved, not mutated)", () => {
+    const empty = filterByQuery(opts, "zzz");
+    expect(empty).toEqual([]);
+    expect(opts).toEqual(["alpha", "beta", "gamma", "Gamma2", "DELTA"]);
+  });
+
+  test("order of the original list is preserved", () => {
+    const r = filterByQuery(opts, "");
+    expect(r).toEqual(opts);
   });
 });
