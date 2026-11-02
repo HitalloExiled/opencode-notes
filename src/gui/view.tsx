@@ -346,8 +346,7 @@ export function NotesView() {
   const tagList = (n: Note): string[] =>
     (n.tags ?? "").split(/\s+/).filter(Boolean)
 
-  const tagChips = (n: Note, max?: number) => {
-    const tags = tagList(n)
+  const tagChips = (n: Note, max?: number) => {    const tags = tagList(n)
     const shown = max === undefined ? tags : tags.slice(0, max)
     return (
       <Show when={tags.length > 0}>
@@ -363,6 +362,11 @@ export function NotesView() {
     )
   }
 
+  // A note counts as confirmed only while it is not disputed or retracted:
+  // both states can be resolved by confirming it again.
+  const isConfirmed = (n: Note): boolean =>
+    n.verifiedAt !== undefined && n.disputedAt === undefined && n.retractedAt === undefined
+
   const trustBadges = (n: Note) => (
     <span class="badges">
       <Show when={n.pinned}>
@@ -374,7 +378,7 @@ export function NotesView() {
       <Show when={n.disputedAt !== undefined}>
         <span class="badge badge-disputed">questionada</span>
       </Show>
-      <Show when={n.verifiedAt !== undefined && n.retractedAt === undefined}>
+      <Show when={n.verifiedAt !== undefined && !n.disputedAt && !n.retractedAt}>
         <span class="badge badge-verified">verificada</span>
       </Show>
     </span>
@@ -422,10 +426,12 @@ export function NotesView() {
               <ctx.ui.Icon name="edit" size="small" />
               Editar
             </button>
-            <button class="btn-app" onClick={confirm}>
-              <ctx.ui.Icon name="circle-check" size="small" />
-              Confirmar
-            </button>
+            <Show when={!isConfirmed(n)}>
+              <button class="btn-app" onClick={confirm}>
+                <ctx.ui.Icon name="circle-check" size="small" />
+                Confirmar
+              </button>
+            </Show>
             <button class="btn-app" onClick={dispute}>
               <ctx.ui.Icon name="outline-hexagonal-warning" size="small" />
               Questionar
