@@ -77,14 +77,17 @@ export function NotesView() {
   const loadNotes = async () => {
     const q = query().trim()
     const pinned = pinnedOnly()
-    const all = showRetracted()
+    // "Retiradas" is a filter, not a toggle that adds them to the rest: keep
+    // the query unfiltered by the DB and keep only the retracted rows here.
+    const retractedOnly = showRetracted()
     setLoading(true)
     setError("")
     try {
       const res = q
-        ? await api.search({ query: q, all })
-        : await api.list({ all, limit: 500 })
+        ? await api.search({ query: q, all: retractedOnly })
+        : await api.list({ all: retractedOnly, limit: 500 })
       let out = res as unknown as Note[]
+      if (retractedOnly) out = out.filter((n) => n.retractedAt !== undefined)
       if (pinned) out = out.filter((n) => n.pinned)
       setNotes(out)
       // Keep the current page valid after a write or a filter change.
@@ -812,7 +815,10 @@ export function NotesView() {
               <Show when={query().trim()}>
                 Nenhuma nota corresponde a "{query().trim()}".
               </Show>
-              <Show when={!query().trim()}>
+              <Show when={!query().trim() && showRetracted()}>
+                Nenhuma nota retirada.
+              </Show>
+              <Show when={!query().trim() && !showRetracted()}>
                 Nenhuma nota ainda.
               </Show>
             </div>
@@ -820,7 +826,10 @@ export function NotesView() {
               <Show when={query().trim()}>
                 Ajuste a busca ou os filtros.
               </Show>
-              <Show when={!query().trim()}>
+              <Show when={!query().trim() && showRetracted()}>
+                Desative o filtro "Retiradas" para ver as demais.
+              </Show>
+              <Show when={!query().trim() && !showRetracted()}>
                 Registre a primeira com "Nova nota".
               </Show>
             </div>
