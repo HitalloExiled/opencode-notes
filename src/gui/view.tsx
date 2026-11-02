@@ -798,7 +798,26 @@ export function NotesView() {
         }
         .filter-btn-label.is-placeholder { color: var(--v2-text-text-faint); font-style: italic; }
         /* Groups the placeholder/chips on the left; the caret sits at the end. */
-        .filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+        .filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 4px; }
+        /* Combo button: the note-row .tag/.tags pill uses bg-layer-02 — the
+           SAME token as this button's background — so it reads as invisible.
+           Re-skin it here as a higher-contrast filled pill that works in
+           light + dark, and never truncate the text (the button has room). */
+        .filter-btn-content .tags { max-width: none; overflow: visible; }
+        .filter-btn-content .tag {
+          background: var(--v2-overlay-simple-overlay-pressed);
+          border: 1px solid var(--v2-border-border-muted);
+          color: var(--v2-text-text-base);
+          font-weight: 500;
+          max-width: none;
+          overflow: visible;
+          text-overflow: clip;
+        }
+        .filter-btn-content .tag-more {
+          background: transparent;
+          border: 0;
+          color: var(--v2-text-text-muted);
+        }
         .filter-btn-caret {
           flex: 0 0 auto;
           width: 8px;
