@@ -36,17 +36,17 @@ function note(partial: Partial<Note> = {}): Note {
 
 describe("tagsOf", () => {
   test("empty / undefined / whitespace tags -> []", () => {
-    expect(tagsOf({})).toEqual([]);
-    expect(tagsOf({ tags: "" })).toEqual([]);
-    expect(tagsOf({ tags: "   " })).toEqual([]);
+    expect(tagsOf(note())).toEqual([]);
+    expect(tagsOf(note({ tags: "" }))).toEqual([]);
+    expect(tagsOf(note({ tags: "   " }))).toEqual([]);
   });
 
   test("splits on runs of whitespace and trims", () => {
-    expect(tagsOf({ tags: " a   b  c " })).toEqual(["a", "b", "c"]);
+    expect(tagsOf(note({ tags: " a   b  c " }))).toEqual(["a", "b", "c"]);
   });
 
   test("deduplicates in first-seen order", () => {
-    expect(tagsOf({ tags: "b a a c b" })).toEqual(["b", "a", "c"]);
+    expect(tagsOf(note({ tags: "b a a c b" }))).toEqual(["b", "a", "c"]);
   });
 });
 
