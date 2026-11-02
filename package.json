@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Notes plugin for OpenCode: curated long-term memory as typed tools (notes.*) and a SolidJS side-panel GUI (./gui-experimental) — a thin wrapper over the global `notes` CLI.",
+  "description": "Notes plugin for OpenCode: curated long-term memory as typed tools (notes.*) and a SolidJS side-panel GUI (./gui-experimental), both over the SQLite notes.db directly.",
   "exports": {
     ".": {
       "import": "./index.ts"

@@ -1,11 +1,12 @@
 # opencode-notes
 
 Plugin e skill de **memória de longa duração curada** para o
-[OpenCode](https://opencode.ai) (V2). O plugin expõe as operações do CLI
-global `notes` como tools tipadas no namespace `notes` — decisões, problemas
-resolvidos, configurações e snippets, com ciclo de confiança
-(`confirm`/`dispute`/`retract`) e histórico completo de versões. O skill
-(`skills/notes/SKILL.md`) documenta a camada completa (CLI + tools) para os
+[OpenCode](https://opencode.ai) (V2). O plugin expõe as operações de memória
+como tools tipadas no namespace `notes` — decisões, problemas resolvidos,
+configurações e snippets, com ciclo de confiança
+(`confirm`/`dispute`/`retract`) e histórico completo de versões — e um painel
+lateral no app desktop. Tudo lê e grava o SQLite diretamente (sem CLI
+externa). O skill (`skills/notes/SKILL.md`) documenta a camada completa para os
 agentes.
 
 O plugin é autocontido: nenhum import de fora do diretório (só
@@ -18,17 +19,21 @@ dado é escrito dentro do repo — o banco vive em
 ```bash
 git clone git@github.com:HitalloExiled/opencode-notes.git
 cd opencode-notes
-npm install
+npm install --legacy-peer-deps
 mkdir -p ~/.config/opencode/plugins
 ln -sfn "$PWD" ~/.config/opencode/plugins/notes
 ln -sfn "$PWD/skills/notes/SKILL.md" ~/.config/opencode/skills/notes/SKILL.md
 ```
 
-Reinicie o OpenCode (ou aguarde o hot-reload). O plugin precisa do CLI `notes`
-disponível (o `opencode-tools` instala o symlink `~/.local/bin/notes` via
-`setup.sh`); o wrapper resolve o binário por `$NOTES_BIN` > `~/.local/bin/notes`
-> `PATH`. O skill é opcional (o plugin funciona sem ele), mas é ele que
-ensina os agentes quando e como registrar notas.
+(`--legacy-peer-deps` porque o `@opencode/plugin` declara um peer opcional de
+vite >= 6 enquanto o build usa vite 5.)
+
+Reinicie o OpenCode (ou aguarde o hot-reload). O plugin não precisa de CLI
+externa: ele abre `notes.db` com o `node:sqlite` embutido no runtime
+(in-process, síncrono, com FTS5) — o mesmo backend no processo Bun das tools,
+no processo principal do Electron e em Node avulso. O skill é opcional (o
+plugin funciona sem ele), mas é ele que ensina os agentes quando e como
+registrar notas.
 
 > Pré-publicação: enquanto o plugin não está publicado, o fluxo acima é o
 > caminho de instalação. O repo `opencode-tools` consome este projeto como
@@ -46,8 +51,11 @@ ensina os agentes quando e como registrar notas.
    `history`/`restore` guardam e recuperam cada versão anterior de
    `update`/`restore`. Nada é deletado.
 3. **Busca e inspeção** — `search` (FTS5 quando disponível, senão `LIKE`),
-   `view` (nota completa, inclusive re-traídas), `doctor` (diagnóstico do
+   `view` (nota completa, inclusive retraídas), `doctor` (diagnóstico do
    subsistema).
+4. **Painel lateral (desktop)** — lista paginada, busca, filtros de fixadas/
+   retraídas, detalhe com revisões e as ações (salvar, editar, confirmar,
+   questionar, retirar, fixar) sem sair do app.
 
 ### Nomes e permissões
 
@@ -66,7 +74,7 @@ StandardSchemaV1); cada tool retorna `{content, metadata}`.
 
 ### Segurança
 
-- Execução do CLI por `spawn` com `argv` (sem shell): o conteúdo da nota nunca
+- Valores vão como parâmetros SQL (nunca interpolados): o conteúdo da nota não
   é interpretado — aspas, `;`, `$(...)`, emoji e novas linhas ficam literais.
 - Nenhum comando destrutivo é exposto: `retract` só esconde (reversível),
   `restore` recupera versões.
@@ -78,7 +86,7 @@ agentes: quando registrar (problemas resolvidos com Sintoma/Causa/Solução —
 obrigatório antes de fechar tarefa, decisões, configs, snippets), o ciclo de
 confiança (`confirm`/`dispute`/`retract`), o `update` como último recurso com
 histórico reversível, convenções (categorias, `Scope:`, tags, autor),
-backup/export-import e a regra de escrever as notas em inglês. O
+backup do arquivo SQLite e a regra de escrever as notas em inglês. O
 `opencode-tools` expõe o skill via symlink
 `~/.config/opencode/skills/notes/SKILL.md` (o `setup.sh` faz o link a partir
 do submodule).
@@ -87,5 +95,7 @@ do submodule).
 
 ```bash
 npm install
-npm run typecheck
+npm run typecheck        # tools
+npm run typecheck:gui    # painel
+npm run gui:build        # dist/gui-experimental.cjs
 ```

@@ -2,7 +2,7 @@
  * Notes GUI — the `./gui-experimental` entry.
  *
  * `main` runs in the desktop main process (Electron): it serves the IPC over
- * the notes DB + the `notes` CLI. `setup` runs in the renderer: it registers
+ * the notes DB. `setup` runs in the renderer: it registers
  * the "Notes" side-panel tab, the command palette / keybind entry and the
  * "+ / New tab" menu entry.
  */

@@ -482,6 +482,51 @@ export function NotesView() {
         .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
         .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 4px 6px; }
         .page-label { font-size: 11.5px; color: var(--v2-text-text-faint); }
+
+        /* Borderless app-style button (no border), using the theme tokens. */
+        .btn-app {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border: 0;
+          border-radius: 6px;
+          font: inherit;
+          font-size: 13px;
+          line-height: 1.4;
+          padding: 2px 10px;
+          cursor: pointer;
+          user-select: none;
+          background: transparent;
+          color: var(--v2-text-text-faint);
+        }
+        .btn-app:hover {
+          background: var(--v2-overlay-simple-overlay-hover);
+          color: var(--v2-text-text-base);
+        }
+        .btn-app:focus-visible {
+          outline: 2px solid var(--v2-border-border-focus);
+          outline-offset: 0;
+        }
+        /* "Nova nota" CTA: subtle resting pill, like the app's New session. */
+        .btn-app.is-pill {
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-muted);
+        }
+        .btn-app.is-pill:hover {
+          background: var(--v2-overlay-simple-overlay-pressed);
+          color: var(--v2-text-text-base);
+        }
+        /* Active filter chip: subtle filled state, no border. */
+        .btn-app.is-active {
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-base);
+          font-weight: 550;
+        }
+        .btn-app.is-active:hover {
+          background: var(--v2-overlay-simple-overlay-pressed);
+          color: var(--v2-text-text-base);
+        }
       `}</style>
 
       <header class="notes-head">
@@ -491,9 +536,10 @@ export function NotesView() {
         </span>
         <span class="notes-count">{count()} notas</span>
         <span class="spacer" />
-        <ctx.ui.Button variant="neutral" icon="plus" onClick={openAdd}>
+        <button class="btn-app is-pill" onClick={openAdd}>
+          <ctx.ui.Icon name="plus" size="small" />
           Nova nota
-        </ctx.ui.Button>
+        </button>
       </header>
 
       <div class="search-row">
@@ -507,20 +553,18 @@ export function NotesView() {
       </div>
 
       <div class="chips">
-        <ctx.ui.Button
-          size="small"
-          variant={pinnedOnly() ? "neutral" : "ghost-muted"}
+        <button
+          class={`btn-app ${pinnedOnly() ? "is-active" : ""}`}
           onClick={() => setPinnedOnly(!pinnedOnly())}
         >
           Fixadas
-        </ctx.ui.Button>
-        <ctx.ui.Button
-          size="small"
-          variant={showRetracted() ? "neutral" : "ghost-muted"}
+        </button>
+        <button
+          class={`btn-app ${showRetracted() ? "is-active" : ""}`}
           onClick={() => setShowRetracted(!showRetracted())}
         >
           Retiradas
-        </ctx.ui.Button>
+        </button>
       </div>
 
       <Show when={loading()}>

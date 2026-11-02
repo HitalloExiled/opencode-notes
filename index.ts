@@ -8,9 +8,10 @@
  *   (notes_add, notes_search, ...) exactly as before, so the existing
  *   permission rules (resource: "notes_add", ...) keep matching.
  *
- * The tools are a thin, typed wrapper over the global `notes` CLI
- * (memory/notes.py in the opencode-tools repo). Nothing is ever deleted:
- * `retract` only hides a note and `restore` brings back old revisions.
+ * The tools talk to the notes database directly through the shared store
+ * (`./src/store.ts`, the same data layer as the side-panel GUI). There is no
+ * external CLI. Nothing is ever deleted: `retract` only hides a note and
+ * `restore` brings back old revisions.
  */
 
 import { Plugin } from "@opencode/plugin";

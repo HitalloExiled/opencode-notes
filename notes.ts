@@ -6,26 +6,51 @@
  * ...; in regular sessions the definitions keep the underscored names
  * (notes_add, notes_search, ...) exactly as before the namespacing.
  *
- * Thin, typed wrapper over the global `notes` CLI, which lives in the
- * opencode-tools repo (memory/notes.py). The wrapper exposes NO destructive
- * operation: add / update / confirm / dispute / retract / history / restore
- * / pin / unpin / view / search / doctor. `update` and the trust flags change an existing
- * note; `retract` only hides it (reversible); `restore` brings back an old
- * revision. Nothing is ever deleted, and every `update`/`restore` keeps the
- * previous version readable via `history`.
+ * The tools talk to `notes.db` directly through `./src/store.ts` (the same
+ * data layer as the side-panel GUI). There is no external CLI. The wrapper
+ * exposes NO destructive operation: add / update / confirm / dispute /
+ * retract / history / restore / pin / unpin / view / search / doctor.
+ * `update` and the trust flags change an existing note; `retract` only hides
+ * it (reversible); `restore` brings back an old revision. Nothing is deleted,
+ * and every `update`/`restore` keeps the previous version readable via
+ * `history`.
  *
  * Safety:
- *  - execution via spawn with argv (no shell) => the note content is never
- *    interpreted; quotes, `;`, `$(...)`, emoji and newlines stay literal;
+ *  - values are bound as SQL parameters (no string interpolation) => note
+ *    content is never interpreted; quotes, `;`, `$(...)`, emoji and newlines
+ *    stay literal;
  *  - the `#problem` guardrail refuses to save without Symptom/Cause/Solution,
  *    turning the skill's convention into something the tool *guarantees*.
  */
 
 import { z } from "zod";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import {
+  addNote,
+  confirmNote,
+  disputeNote,
+  doctorInfo,
+  listNotes,
+  noteHistory,
+  pinNote,
+  renderAdd,
+  renderConfirm,
+  renderDispute,
+  renderDoctor,
+  renderHistory,
+  renderPin,
+  renderRestore,
+  renderRetract,
+  renderRows,
+  renderUnpin,
+  renderUpdate,
+  requireStore,
+  restoreNote,
+  retractNote,
+  searchNotes,
+  unpinNote,
+  updateNote,
+  viewNote,
+} from "./src/store.js";
 
 const CATEGORIES = [
   "problem",
@@ -37,54 +62,9 @@ const CATEGORIES = [
   "general",
 ] as const;
 
-type Run = { code: number; stdout: string; stderr: string };
-
 type ToolResult = { content: string; metadata?: Record<string, unknown> };
 
 const ID_DESC = "Note id, shown as #NN by notes.search.";
-
-/** Resolve the binary: $NOTES_BIN > ~/.local/bin/notes > PATH. */
-function nbCommand(): string {
-  if (process.env.NOTES_BIN) return process.env.NOTES_BIN;
-  const local = join(homedir(), ".local", "bin", "notes");
-  if (existsSync(local)) return local;
-  return "notes";
-}
-
-function runNb(args: string[], input?: string): Promise<Run> {
-  return new Promise((resolve) => {
-    let child;
-    try {
-      child = spawn(nbCommand(), args, { stdio: ["pipe", "pipe", "pipe"] });
-    } catch (err) {
-      resolve({ code: 127, stdout: "", stderr: String(err) });
-      return;
-    }
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (c) => (stdout += c));
-    child.stderr?.on("data", (c) => (stderr += c));
-    child.on("error", (err) =>
-      resolve({
-        code: 127,
-        stdout,
-        stderr:
-          stderr +
-          `\ncould not run '${nbCommand()}': ${err instanceof Error ? err.message : String(err)}\n` +
-          "run ./setup.sh in the opencode-tools repo (creates the symlink in ~/.local/bin).",
-      }),
-    );
-    child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
-    child.stdin?.end(input ?? "");
-  });
-}
-
-function render(run: Run): string {
-  const out = run.stdout.trim();
-  const err = run.stderr.trim();
-  if (run.code === 0) return err ? `${out}\n${err}` : out;
-  return [out, err, `(exit ${run.code})`].filter(Boolean).join("\n");
-}
 
 /** Normalize for comparison: strip accents, lowercase. */
 function norm(text: string): string {
@@ -103,6 +83,11 @@ function missingProblemSections(content: string): string[] {
     ["Solution", "solution"],
   ];
   return required.filter(([, needle]) => !text.includes(needle)).map(([label]) => label);
+}
+
+/** Run a store mutation, turning a failure into the tool's error text. */
+function fail(error: string): ToolResult {
+  return { content: `❌ ${error}`, metadata: { exit: 1, rejected: true } };
 }
 
 const addInput = z.object({
@@ -168,13 +153,10 @@ export const add = {
       return { content: "❌ empty title.", metadata: { rejected: true } };
     }
 
-    const addArgs = ["add", `#${category}`, args.title, tags, content];
-    if (author) addArgs.push("--author", author);
-    const run = await runNb(addArgs);
-    return {
-      content: render(run),
-      metadata: { category, author, exit: run.code },
-    };
+    const { db } = await requireStore();
+    const result = addNote(db, { category, title: args.title, content, tags, author });
+    if (!result.ok) return fail(result.error);
+    return { content: renderAdd(result), metadata: { category, author, exit: 0 } };
   },
 };
 
@@ -240,17 +222,16 @@ export const update = {
       }
     }
 
-    const argv = ["update", String(args.id)];
-    if (args.title !== undefined) argv.push("--title", args.title);
-    if (args.tags !== undefined) argv.push("--tags", args.tags);
-    if (args.content !== undefined) argv.push("--content", args.content);
-    if (args.category !== undefined) argv.push("--category", `#${args.category}`);
-
-    const run = await runNb(argv);
-    return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
-    };
+    const { db } = await requireStore();
+    const result = updateNote(db, {
+      id: args.id,
+      title: args.title,
+      tags: args.tags,
+      content: args.content,
+      category: args.category,
+    });
+    if (!result.ok) return fail(result.error);
+    return { content: renderUpdate(result), metadata: { id: args.id, exit: 0 } };
   },
 };
 
@@ -287,12 +268,29 @@ export const search = {
   async execute(args: SearchArgs): Promise<ToolResult> {
     const query = (args.query ?? "").trim();
     const limit = args.limit ?? 10;
-    const argv = query ? ["search", query, String(limit)] : ["list", String(limit)];
-    if (args.includeRetracted === true) argv.push("--all");
-    const run = await runNb(argv);
+    const all = args.includeRetracted === true;
+    const { db } = await requireStore();
+
+    if (!query) {
+      const rows = listNotes(db, { limit, all });
+      const content =
+        rows.length === 0
+          ? "📭 Nenhuma nota registrada ainda."
+          : renderRows(`📋 Últimas ${rows.length} nota(s):`, rows);
+      return { content, metadata: { query, limit, exit: 0 } };
+    }
+
+    const rows = searchNotes(db, query, { limit, all });
+    if (rows.length === 0) {
+      const extra = all ? "" : " (notas retratadas ficam fora; use --all para vê-las)";
+      return {
+        content: `❌ Nenhuma nota encontrada para '${query}'.${extra}`,
+        metadata: { query, limit, exit: 0 },
+      };
+    }
     return {
-      content: render(run),
-      metadata: { query, limit, exit: run.code },
+      content: renderRows(`🔍 Encontradas ${rows.length} nota(s) para '${query}':`, rows),
+      metadata: { query, limit, exit: 0 },
     };
   },
 };
@@ -311,11 +309,10 @@ export const confirm = {
     "back into normal search). Prefer this over a new note when nothing changed.",
   input: confirmInput,
   async execute(args: ConfirmArgs): Promise<ToolResult> {
-    const run = await runNb(["confirm", String(args.id)]);
-    return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
-    };
+    const { db } = await requireStore();
+    const result = confirmNote(db, args.id);
+    if (!result.ok) return fail(result.error);
+    return { content: renderConfirm(result), metadata: { id: args.id, exit: 0 } };
   },
 };
 
@@ -343,11 +340,10 @@ export const dispute = {
         metadata: { rejected: true },
       };
     }
-    const run = await runNb(["dispute", String(args.id), "--why", args.why]);
-    return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
-    };
+    const { db } = await requireStore();
+    const result = disputeNote(db, args.id, args.why);
+    if (!result.ok) return fail(result.error);
+    return { content: renderDispute(result), metadata: { id: args.id, exit: 0 } };
   },
 };
 
@@ -369,13 +365,10 @@ export const retract = {
     "🚫 badge. This is the noise-control tool; deletion stays a human-only action.",
   input: retractInput,
   async execute(args: RetractArgs): Promise<ToolResult> {
-    const argv = ["retract", String(args.id)];
-    if (args.why !== undefined) argv.push("--why", args.why);
-    const run = await runNb(argv);
-    return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
-    };
+    const { db } = await requireStore();
+    const result = retractNote(db, args.id, args.why);
+    if (!result.ok) return fail(result.error);
+    return { content: renderRetract(result), metadata: { id: args.id, exit: 0 } };
   },
 };
 
@@ -399,12 +392,12 @@ export const history = {
     "content is never discarded. Each prior version is labelled rev #N.",
   input: historyInput,
   async execute(args: HistoryArgs): Promise<ToolResult> {
-    const argv = ["history", String(args.id)];
-    if (args.limit !== undefined) argv.push(String(args.limit));
-    const run = await runNb(argv);
+    const { db } = await requireStore();
+    const found = noteHistory(db, args.id, args.limit);
+    if (!found) return fail(`nota ${args.id} não encontrada`);
     return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
+      content: renderHistory(found, args.limit),
+      metadata: { id: args.id, exit: 0 },
     };
   },
 };
@@ -429,10 +422,18 @@ export const restore = {
     "the note is re-verified (dispute/retraction cleared).",
   input: restoreInput,
   async execute(args: RestoreArgs): Promise<ToolResult> {
-    const run = await runNb(["restore", String(args.id), String(args.rev)]);
+    const { db } = await requireStore();
+    const result = restoreNote(db, args.id, args.rev);
+    if (!result.ok) {
+      return {
+        content:
+          `❌ ${result.error}\n` + `   veja os ids válidos com \`notes history ${args.id}\`.`,
+        metadata: { id: args.id, rev: args.rev, exit: 1, rejected: true },
+      };
+    }
     return {
-      content: render(run),
-      metadata: { id: args.id, rev: args.rev, exit: run.code },
+      content: renderRestore(result),
+      metadata: { id: args.id, rev: args.rev, exit: 0 },
     };
   },
 };
@@ -451,10 +452,12 @@ export const view = {
     "deciding to notes.confirm or notes.update it.",
   input: viewInput,
   async execute(args: ViewArgs): Promise<ToolResult> {
-    const run = await runNb(["view", String(args.id)]);
+    const { db } = await requireStore();
+    const note = viewNote(db, args.id);
+    if (!note) return fail(`nota ${args.id} não encontrada`);
     return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
+      content: renderRows(`📄 Nota #${args.id}`, [note]),
+      metadata: { id: args.id, exit: 0 },
     };
   },
 };
@@ -465,19 +468,17 @@ type DoctorArgs = z.infer<typeof doctorInput>;
 export const doctor = {
   name: "doctor",
   description:
-    "Memory subsystem diagnosis: python/sqlite, FTS5 availability (full-text " +
-    "search; when absent the CLI degrades to LIKE), database schema path and " +
+    "Memory subsystem diagnosis: runtime/sqlite, FTS5 availability (full-text " +
+    "search; when absent the tools degrade to LIKE), database schema path and " +
     "version, note count and index sync. Use when a search/save fails or to " +
     "check whether the machine is ready.",
   input: doctorInput,
   async execute(_args: DoctorArgs): Promise<ToolResult> {
-    const run = await runNb(["doctor"]);
-    return {
-      content: render(run),
-      metadata: { exit: run.code },
-    };
+    const store = await requireStore();
+    return { content: renderDoctor(doctorInfo(store)), metadata: { exit: 0 } };
   },
 };
+
 const pinInput = z.object({
   id: z.number().int().positive().describe(ID_DESC),
 });
@@ -491,11 +492,10 @@ export const pin = {
     "across sessions. Unpin when it is no longer relevant.",
   input: pinInput,
   async execute(args: PinArgs): Promise<ToolResult> {
-    const run = await runNb(["pin", String(args.id)]);
-    return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
-    };
+    const { db } = await requireStore();
+    const result = pinNote(db, args.id);
+    if (!result.ok) return fail(result.error);
+    return { content: renderPin(result), metadata: { id: args.id, exit: 0 } };
   },
 };
 
@@ -507,10 +507,9 @@ export const unpin = {
     "relevant to the current work.",
   input: pinInput,
   async execute(args: PinArgs): Promise<ToolResult> {
-    const run = await runNb(["unpin", String(args.id)]);
-    return {
-      content: render(run),
-      metadata: { id: args.id, exit: run.code },
-    };
+    const { db } = await requireStore();
+    const result = unpinNote(db, args.id);
+    if (!result.ok) return fail(result.error);
+    return { content: renderUnpin(result), metadata: { id: args.id, exit: 0 } };
   },
 };

@@ -52,7 +52,7 @@ export type NoteResult = {
   note?: Note | undefined
 }
 
-export type Driver = "sqlite" | "cli"
+export type Driver = "sqlite" | "none"
 
 export type Status = {
   driver: Driver
@@ -148,7 +148,7 @@ export const noteResultSchema = Schema.Struct({
 
 export const driverSchema = Schema.Union([
   Schema.Literal("sqlite"),
-  Schema.Literal("cli"),
+  Schema.Literal("none"),
 ])
 
 export const statusSchema = Schema.Struct({
