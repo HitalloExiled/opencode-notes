@@ -20,6 +20,7 @@ import type {
   SearchInput,
   Status,
   UpdateInput,
+  DeleteInput,
 } from "./contract"
 import {
   addNote,
@@ -37,6 +38,7 @@ import {
   unpinNote,
   updateNote,
   viewNote,
+  deleteNote,
   type NoteRow,
   type RevisionRow,
 } from "../store.js"
@@ -52,6 +54,7 @@ const toNote = (r: NoteRow): Note => ({
   title: r.title,
   content: r.content,
   tags: r.tags ?? undefined,
+  scope: r.scope ?? undefined,
   author: r.author ?? undefined,
   verifiedAt: r.verified_at ?? undefined,
   disputedAt: r.disputed_at ?? undefined,
@@ -66,6 +69,7 @@ const toRevision = (r: RevisionRow): NoteDetail["revisions"][number] => ({
   timestamp: r.timestamp,
   category: r.category,
   tags: r.tags ?? undefined,
+  scope: r.scope ?? undefined,
   title: r.title,
   content: r.content,
 })
@@ -151,6 +155,11 @@ export function main(ctx: MainContext): void {
     restore: async (input: RestoreInput): Promise<NoteResult> => {
       const { db } = await requireStore()
       return fromWrite(restoreNote(db, input.id, input.revisionId))
+    },
+
+    delete: async (input: DeleteInput): Promise<NoteResult> => {
+      const { db } = await requireStore()
+      return fromWrite(deleteNote(db, input.id))
     },
   })
 }

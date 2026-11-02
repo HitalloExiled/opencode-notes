@@ -35,6 +35,7 @@ type FormState = {
   content: string
   tags: string
   author: string
+  scope: string
 }
 
 const defaultForm: FormState = {
@@ -44,7 +45,16 @@ const defaultForm: FormState = {
   content: "",
   tags: "",
   author: "",
+  scope: "",
 }
+
+/* ------------------------------------------------------------------ */
+/* Note helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+const tagsOf = (note: Note): string[] =>
+  (note.tags ?? "").split(/\s+/).filter(Boolean)
+
 
 const PAGE_SIZE = 25
 
@@ -60,6 +70,8 @@ export function NotesView() {
   const [query, setQuery] = createSignal("")
   const [showRetracted, setShowRetracted] = createSignal(false)
   const [pinnedOnly, setPinnedOnly] = createSignal(false)
+  const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
+  const [tagFilter, setTagFilter] = createSignal<string[]>([])
   const [selectedId, setSelectedId] = createSignal<number | null>(null)
   const [detail, setDetail] = createSignal<NoteDetail | null>(null)
   const [revisionsOpen, setRevisionsOpen] = createSignal(false)
@@ -69,6 +81,9 @@ export function NotesView() {
   const [formOpen, setFormOpen] = createSignal(false)
   const [form, setForm] = createSignal(defaultForm)
   const [notes, setNotes] = createSignal<Note[]>([])
+  // Unfiltered snapshot behind the scope/tag dropdowns: the options must not
+  // shrink to whatever the active filter currently matches.
+  const [allNotes, setAllNotes] = createSignal<Note[]>([])
   const [page, setPage] = createSignal(0)
 
   const locale = () => ctx.locale.locale()
@@ -78,17 +93,29 @@ export function NotesView() {
     const q = query().trim()
     const pinned = pinnedOnly()
     // "Retiradas" is a filter, not a toggle that adds them to the rest: keep
-    // the query unfiltered by the DB and keep only the retracted rows here.
+    // only the retracted rows (and drop them when the filter is off).
     const retractedOnly = showRetracted()
+    const scope = scopeFilter()
+    const tag = tagFilter()
     setLoading(true)
     setError("")
     try {
+      const all = (await api.list({ all: true, limit: 5000 })) as unknown as Note[]
+      setAllNotes(all)
+      // Filters are multi-selects: drop only the values that no longer exist,
+      // keep the rest, so picking several never collapses the whole selection.
+      setScopeFilter(scope.filter((s) => all.some((n) => (n.scope ?? "") === s)))
+      setTagFilter(tag.filter((t) => all.some((n) => tagsOf(n).includes(t))))
       const res = q
-        ? await api.search({ query: q, all: retractedOnly })
-        : await api.list({ all: retractedOnly, limit: 500 })
-      let out = res as unknown as Note[]
-      if (retractedOnly) out = out.filter((n) => n.retractedAt !== undefined)
+        ? ((await api.search({ query: q, all: true })) as unknown as Note[])
+        : all
+      let out = res
+      out = out.filter((n) =>
+        retractedOnly ? n.retractedAt !== undefined : n.retractedAt === undefined
+      )
       if (pinned) out = out.filter((n) => n.pinned)
+      if (scope.length) out = out.filter((n) => scope.includes(n.scope ?? ""))
+      if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
       setNotes(out)
       // Keep the current page valid after a write or a filter change.
       const maxPage = Math.max(0, Math.ceil(out.length / PAGE_SIZE) - 1)
@@ -106,6 +133,17 @@ export function NotesView() {
     setPage(0)
     void loadNotes()
   })
+
+  // Filter choices come from the unfiltered snapshot, so picking one scope or
+  // tag never removes the others from the dropdown.
+  const scopeOptions = createMemo(() =>
+    [...new Set(allNotes().map((n) => n.scope ?? "").filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b)
+    )
+  )
+  const tagOptions = createMemo(() =>
+    [...new Set(allNotes().flatMap(tagsOf))].sort((a, b) => a.localeCompare(b))
+  )
 
   const reloadSelected = async (id: number | null) => {
     if (id === null) {
@@ -161,6 +199,8 @@ export function NotesView() {
       setError("Título e conteúdo são obrigatórios.")
       return
     }
+    const content = f.content.trim()
+    const scope = f.scope.trim() || undefined
     setSaving(true)
     try {
       const res =
@@ -168,16 +208,19 @@ export function NotesView() {
           ? await api.add({
               category: f.category,
               title: f.title.trim(),
-              content: f.content.trim(),
+              content,
               tags: f.tags.trim() || undefined,
               author: f.author.trim() || undefined,
+              scope,
             })
           : await api.update({
               id: f.id as number,
               title: f.title.trim(),
-              content: f.content.trim(),
+              content,
               tags: f.tags.trim() || undefined,
               category: f.category,
+              // An explicit empty string clears the scope.
+              scope: f.scope.trim(),
             })
       if (res.ok) {
         setFormOpen(false)
@@ -208,6 +251,7 @@ export function NotesView() {
       content: n.content,
       tags: n.tags || "",
       author: n.author || "",
+      scope: n.scope ?? "",
     })
     setFormOpen(true)
   }
@@ -257,6 +301,19 @@ export function NotesView() {
     const current = id()
     if (current !== null) void doAction(api.unpin, current, "Nota desfixada")
   }
+  const remove = async () => {
+    const current = id()
+    if (current === null) return
+    const ok = await ctx.dialogs.confirm({
+      title: "Excluir nota",
+      description: `Excluir permanentemente a nota #${current} e todas as suas versões. Não há como recuperar.`,
+      confirm: "Excluir",
+      danger: true,
+    })
+    if (ok) {
+      void doAction(api.delete, { id: current }, "Nota excluída")
+    }
+  }
   const restore = async (rev: Revision) => {
     const current = id()
     if (current === null) return
@@ -299,6 +356,7 @@ export function NotesView() {
           : ""
     const meta = [
       String(n.category).replace(/^#/, ""),
+      n.scope ? `scope: ${n.scope}` : "",
       n.tags ? `tags: ${n.tags}` : "",
       n.author ? `author: ${n.author}` : "",
       formatTime(n.timestamp),
@@ -346,10 +404,8 @@ export function NotesView() {
   /* ---------- render helpers ---------- */
   // Tags are stored as a single space-separated string; render them as chips
   // so they read as metadata instead of blending into the title.
-  const tagList = (n: Note): string[] =>
-    (n.tags ?? "").split(/\s+/).filter(Boolean)
-
-  const tagChips = (n: Note, max?: number) => {    const tags = tagList(n)
+  const tagChips = (n: Note, max?: number) => {
+    const tags = tagsOf(n)
     const shown = max === undefined ? tags : tags.slice(0, max)
     return (
       <Show when={tags.length > 0}>
@@ -401,6 +457,11 @@ export function NotesView() {
             {n.title}
           </span>
           {tagChips(n, 2)}
+          <Show when={n.scope}>
+            <span class="tag tag-scope" title={`Escopo: ${n.scope}`}>
+              {n.scope}
+            </span>
+          </Show>
           {trustBadges(n)}
           <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
         </button>
@@ -420,6 +481,9 @@ export function NotesView() {
             <span>{formatTime(n.timestamp)}</span>
             <Show when={n.author}>
               <span>por {n.author}</span>
+            </Show>
+            <Show when={n.scope}>
+              <span class="tag tag-scope">escopo: {n.scope}</span>
             </Show>
             {tagChips(n)}
           </div>
@@ -446,6 +510,10 @@ export function NotesView() {
             <button class="btn-app" onClick={n.pinned ? unpin : pin}>
               <ctx.ui.Icon name={n.pinned ? "close-small" : "lock"} size="small" />
               {n.pinned ? "Desfixar" : "Fixar"}
+            </button>
+            <button class="btn-app is-danger" onClick={remove}>
+              <ctx.ui.Icon name="trash" size="small" />
+              Excluir
             </button>
           </div>
           <div class="revisions">
@@ -499,6 +567,33 @@ export function NotesView() {
         .notes-count { font-size: 12px; color: var(--v2-text-text-muted); }
         .spacer { flex: 1; }
         .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        .filter-row { display: flex; gap: 6px; margin-bottom: 8px; }
+        .filter-row select {
+          flex: 1;
+          min-width: 0;
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-base);
+          font: inherit;
+          padding: 2px 6px;
+        }
+        /* Multi-select boxes: give them a stable height so the selected
+           values read as a set rather than a one-line scrollbox. */
+        .filter-row select.filter-select {
+          height: 92px;
+          resize: none;
+        }
+        /* Native dropdowns paint a white surface on Linux; the options must
+           carry the theme colors or their text washes out. */
+        .filter-row select option {
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-base);
+        }
+        .filter-row select:focus {
+          outline: 2px solid var(--v2-border-border-focus);
+          outline-offset: 0;
+        }
         .notes { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; min-height: 0; }
         .note {
           border: 1px solid var(--v2-border-border-muted);
@@ -554,6 +649,8 @@ export function NotesView() {
           max-width: 110px;
         }
         .tag-more { color: var(--v2-text-text-faint); }
+        /* Scope reads as hierarchy, not as a free-form tag. */
+        .tag-scope { color: var(--v2-text-text-base); border: 1px solid var(--v2-border-border-muted); }
         .badges { display: flex; gap: 4px; flex: 0 0 auto; }        .badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
         .badge-pinned { border: 1px solid var(--v2-border-border-muted); color: var(--v2-icon-icon-base); }
         .badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
@@ -739,6 +836,47 @@ export function NotesView() {
         </button>
       </div>
 
+            <Show when={scopeOptions().length > 0 || tagOptions().length > 0}>
+        <div class="filter-row">
+          <select
+            class="filter-select"
+            multiple
+            aria-label="Filtrar por escopo"
+            value={scopeFilter()}
+            onChange={
+              (e) =>
+                setScopeFilter(
+                  Array.from(e.currentTarget.selectedOptions)
+                    .filter((o) => o.value !== "")
+                    .map((o) => o.value)
+                )
+            }
+          >
+            {scopeOptions().map((scope) => (
+              <option value={scope}>{scope}</option>
+            ))}
+          </select>
+          <select
+            class="filter-select"
+            multiple
+            aria-label="Filtrar por tag"
+            value={tagFilter()}
+            onChange={
+              (e) =>
+                setTagFilter(
+                  Array.from(e.currentTarget.selectedOptions)
+                    .filter((o) => o.value !== "")
+                    .map((o) => o.value)
+                )
+            }
+          >
+            {tagOptions().map((tag) => (
+              <option value={tag}>{tag}</option>
+            ))}
+          </select>
+        </div>
+      </Show>
+
       <Show when={loading()}>
         <div class="loader-row">
           <ctx.ui.Loader size="small" />
@@ -786,6 +924,15 @@ export function NotesView() {
               placeholder="palavras-chave separadas por espaço"
               value={form().tags}
               onInput={(v) => setForm((s) => ({ ...s, tags: v }))}
+            />
+          </label>
+          <label>
+            Escopo
+            <ctx.ui.TextInput
+              label="Escopo"
+              placeholder="global, project:<nome> ou machine:<nome>"
+              value={form().scope}
+              onInput={(v) => setForm((s) => ({ ...s, scope: v }))}
             />
           </label>
           <label>

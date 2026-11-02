@@ -21,6 +21,7 @@ export type Note = {
   timestamp: string
   category: string
   tags?: string | undefined
+  scope?: string | undefined
   title: string
   content: string
   author?: string | undefined
@@ -37,6 +38,7 @@ export type Revision = {
   timestamp: string
   category: string
   tags?: string | undefined
+  scope?: string | undefined
   title: string
   content: string
 }
@@ -77,6 +79,7 @@ export type AddInput = {
   content: string
   tags?: string | undefined
   author?: string | undefined
+  scope?: string | undefined
 }
 
 export type UpdateInput = {
@@ -85,6 +88,7 @@ export type UpdateInput = {
   content?: string | undefined
   tags?: string | undefined
   category?: string | undefined
+  scope?: string | undefined
 }
 
 export type DisputeInput = {
@@ -102,6 +106,10 @@ export type RestoreInput = {
   revisionId: number
 }
 
+export type DeleteInput = {
+  id: number
+}
+
 /* ------------------------------------------------------------------ */
 /* Schemas (runtime — mirror the types above)                          */
 /* ------------------------------------------------------------------ */
@@ -115,6 +123,7 @@ export const noteSchema = Schema.Struct({
   timestamp: Schema.String,
   category: Schema.String,
   tags: optString,
+  scope: optString,
   title: Schema.String,
   content: Schema.String,
   author: optString,
@@ -131,6 +140,7 @@ export const revisionSchema = Schema.Struct({
   timestamp: Schema.String,
   category: Schema.String,
   tags: optString,
+  scope: optString,
   title: Schema.String,
   content: Schema.String,
 })
@@ -174,6 +184,7 @@ export const addInputSchema = Schema.Struct({
   content: Schema.String,
   tags: optString,
   author: optString,
+  scope: optString,
 })
 
 export const updateInputSchema = Schema.Struct({
@@ -182,6 +193,7 @@ export const updateInputSchema = Schema.Struct({
   content: optString,
   tags: optString,
   category: optString,
+  scope: optString,
 })
 
 export const disputeInputSchema = Schema.Struct({
@@ -197,6 +209,10 @@ export const retractInputSchema = Schema.Struct({
 export const restoreInputSchema = Schema.Struct({
   id: Schema.Number,
   revisionId: Schema.Number,
+})
+
+export const deleteInputSchema = Schema.Struct({
+  id: Schema.Number,
 })
 
 /* ------------------------------------------------------------------ */
@@ -219,5 +235,6 @@ export const NotesApi = Ipc.define({
     pin: { input: Schema.Number, output: noteResultSchema },
     unpin: { input: Schema.Number, output: noteResultSchema },
     restore: { input: restoreInputSchema, output: noteResultSchema },
+    delete: { input: deleteInputSchema, output: noteResultSchema },
   },
 })

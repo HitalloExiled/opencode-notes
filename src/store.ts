@@ -159,6 +159,15 @@ const MIGRATION_005 = [
   `CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes(pinned, timestamp DESC)`,
 ]
 
+// Scope moved out of the body convention into its own column. The backfill
+// below lifts existing `Scope: …` lines into the column and strips them from
+// the body, so there is a single source of truth going forward.
+const MIGRATION_006 = [
+  `ALTER TABLE notes ADD COLUMN scope TEXT`,
+  `ALTER TABLE note_revisions ADD COLUMN scope TEXT`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_scope ON notes(scope)`,
+]
+
 const FTS_SCHEMA = [
   `CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     title, content, tags, category,
@@ -180,7 +189,7 @@ const FTS_SCHEMA = [
   END`,
 ]
 
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 /* ------------------------------------------------------------------ */
 /* Schema init / migrations                                            */
@@ -200,6 +209,49 @@ function apply(db: Db, statements: readonly string[]): void {
   for (const sql of statements) db.prepare(sql).run()
 }
 
+/* ------------------------------------------------------------------ */
+/* Scope                                                               */
+/* ------------------------------------------------------------------ */
+
+const SCOPE_LINE = /^\s*Scope:\s*(\S+)\s*$/
+
+/** Normalizes a scope to a single token: `global`, `project:<name>`, `machine:<name>`. */
+export function normalizeScope(value?: string | null): string | null {
+  const token = (value ?? "").trim().split(/\s+/)[0] ?? ""
+  return token || null
+}
+
+/** The scope declared in the body by the old convention, if any. */
+export function scopeFromContent(content: string): string | null {
+  const match = content.match(/^\s*Scope:\s*(\S+)/m)
+  return match?.[1] ? normalizeScope(match[1]) : null
+}
+
+/** Removes the legacy `Scope: …` line from a body. */
+export function stripScopeLine(content: string): string {
+  return content
+    .split("\n")
+    .filter((line) => !SCOPE_LINE.test(line))
+    .join("\n")
+    .trimEnd()
+}
+
+/** Lifts the body convention into the new `scope` column, once. */
+function backfillScopeColumn(db: Db): void {
+  for (const table of ["notes", "note_revisions"] as const) {
+    const rows = db
+      .prepare(`SELECT id, content FROM ${table} WHERE scope IS NULL`)
+      .all() as Array<{ id: number; content: string }>
+    if (rows.length === 0) continue
+    const update = db.prepare(`UPDATE ${table} SET scope = ?, content = ? WHERE id = ?`)
+    for (const row of rows) {
+      const scope = scopeFromContent(row.content)
+      if (!scope) continue
+      update.run(scope, stripScopeLine(row.content), row.id)
+    }
+  }
+}
+
 export function initSchema(db: Db): void {
   apply(db, BASE_SCHEMA)
   if (ftsSupported(db)) apply(db, FTS_SCHEMA)
@@ -210,6 +262,10 @@ export function initSchema(db: Db): void {
   if (current < 3) apply(db, MIGRATION_003)
   if (current < 4) apply(db, MIGRATION_004)
   if (current < 5) apply(db, MIGRATION_005)
+  if (current < 6) apply(db, MIGRATION_006)
+  // Unconditional: every note written before the column existed is lifted
+  // from its legacy `Scope:` body line on first boot after the update.
+  backfillScopeColumn(db)
   db.prepare(`PRAGMA user_version = ${SCHEMA_VERSION}`).run()
 }
 
@@ -284,6 +340,7 @@ export type NoteRow = {
   timestamp: string
   category: string
   tags: string | null
+  scope: string | null
   title: string
   content: string
   author: string | null
@@ -300,6 +357,7 @@ export type RevisionRow = {
   timestamp: string
   category: string
   tags: string | null
+  scope: string | null
   title: string
   content: string
   verified_at: string | null
@@ -309,7 +367,7 @@ export type RevisionRow = {
 }
 
 export const NOTE_FIELDS = [
-  "id", "timestamp", "category", "tags", "title", "content",
+  "id", "timestamp", "category", "tags", "scope", "title", "content",
   "author", "verified_at", "disputed_at", "retracted_at", "status_reason", "pinned",
 ] as const
 
@@ -420,7 +478,7 @@ export function noteHistory(db: Db, id: number, limit?: number): History | undef
   const note = loadNote(db, id)
   if (!note) return undefined
   let sql =
-    "SELECT id, revised_at, timestamp, category, tags, title, content," +
+    "SELECT id, revised_at, timestamp, category, tags, scope, title, content," +
     " verified_at, disputed_at, retracted_at, status_reason" +
     " FROM note_revisions WHERE note_id = ? ORDER BY id DESC"
   const params: unknown[] = [id]
@@ -448,6 +506,7 @@ export type UpdateOk = {
 }
 export type RestoreOk = UpdateOk & { revisionIdFrom: number; revisedAt: string }
 export type FlagOk = { ok: true; note: NoteRow; timestamp: string }
+export type DeleteOk = { ok: true; note: NoteRow }
 
 export type AddInput = {
   category: string
@@ -455,11 +514,13 @@ export type AddInput = {
   content: string
   tags?: string | undefined
   author?: string | undefined
+  scope?: string | undefined
 }
 
 export function addNote(db: Db, input: AddInput): AddOk | WriteError {
   const category = normalizeCategory(input.category)
   const title = input.title
+  const scope = normalizeScope(input.scope)
   const content = input.content ?? ""
   if (!title.trim()) return { ok: false, error: "título vazio: a nota ficaria sem identificação." }
   if (category === "#problem") {
@@ -469,12 +530,13 @@ export function addNote(db: Db, input: AddInput): AddOk | WriteError {
   const timestamp = nowTimestamp()
   const info = db
     .prepare(
-      "INSERT INTO notes (timestamp, category, tags, title, content, author) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO notes (timestamp, category, tags, scope, title, content, author) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
     .run(
       timestamp,
       category,
       input.tags ?? "",
+      scope,
       title,
       content,
       input.author && input.author.trim() ? input.author.trim() : null
@@ -490,6 +552,7 @@ export type UpdateInput = {
   tags?: string | undefined
   content?: string | undefined
   category?: string | undefined
+  scope?: string | undefined
 }
 
 export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
@@ -497,7 +560,8 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
     input.title === undefined &&
     input.tags === undefined &&
     input.content === undefined &&
-    input.category === undefined
+    input.category === undefined &&
+    input.scope === undefined
   ) {
     return { ok: false, error: "update requer ao menos um campo" }
   }
@@ -508,6 +572,7 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
   const newTags = input.tags !== undefined ? input.tags : old.tags
   const newTitle = input.title !== undefined ? input.title : old.title
   const newContent = input.content !== undefined ? input.content : old.content
+  const newScope = input.scope !== undefined ? normalizeScope(input.scope) : old.scope
 
   if (!newTitle.trim()) return { ok: false, error: "título vazio: a nota ficaria sem identificação." }
   if (newCategory === "#problem") {
@@ -519,9 +584,9 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
   // Correção sem perda: snapshot do estado anterior ANTES de sobrescrever.
   const rev = db
     .prepare(
-      "INSERT INTO note_revisions (note_id, revised_at, timestamp, category, tags, title, content," +
+      "INSERT INTO note_revisions (note_id, revised_at, timestamp, category, tags, scope, title, content," +
         " verified_at, disputed_at, retracted_at, status_reason) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .run(
       input.id,
@@ -529,6 +594,7 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
       old.timestamp,
       old.category,
       old.tags,
+      old.scope,
       old.title,
       old.content,
       old.verified_at,
@@ -537,9 +603,9 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
       old.status_reason
     )
   db.prepare(
-    "UPDATE notes SET timestamp = ?, category = ?, tags = ?, title = ?, content = ?," +
+    "UPDATE notes SET timestamp = ?, category = ?, tags = ?, scope = ?, title = ?, content = ?," +
       " verified_at = ?, disputed_at = NULL, retracted_at = NULL, status_reason = NULL WHERE id = ?"
-  ).run(timestamp, newCategory, newTags, newTitle, newContent, timestamp, input.id)
+  ).run(timestamp, newCategory, newTags, newScope, newTitle, newContent, timestamp, input.id)
 
   const note = loadNote(db, input.id)
   if (!note) return { ok: false, error: `nota ${input.id} não encontrada após atualização` }
@@ -555,10 +621,10 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
 export function restoreNote(db: Db, id: number, revisionId: number): RestoreOk | WriteError {
   const rev = db
     .prepare(
-      "SELECT revised_at, category, tags, title, content FROM note_revisions WHERE id = ? AND note_id = ?"
+      "SELECT revised_at, category, tags, scope, title, content FROM note_revisions WHERE id = ? AND note_id = ?"
     )
     .get(revisionId, id) as
-    | { revised_at: string; category: string; tags: string | null; title: string; content: string }
+    | { revised_at: string; category: string; tags: string | null; scope: string | null; title: string; content: string }
     | null
   if (!rev) {
     return { ok: false, error: `revisão #${revisionId} não encontrada para a nota ${id}.` }
@@ -570,6 +636,7 @@ export function restoreNote(db: Db, id: number, revisionId: number): RestoreOk |
     tags: rev.tags ?? "",
     content: rev.content,
     category: rev.category,
+    scope: rev.scope ?? "",
   })
   if (!result.ok) return result
   return { ...result, revisionIdFrom: revisionId, revisedAt: rev.revised_at }
@@ -627,6 +694,36 @@ export function unpinNote(db: Db, id: number): FlagOk | WriteError {
   return { ok: true, note, timestamp: note.timestamp }
 }
 
+/**
+ * Hard delete: removes the note and every version, permanently.
+ *
+ * Unlike retract (which only flags the row so it stops being listed), this
+ * drops the rows themselves. The `notes_ad` trigger strips the note from the
+ * FTS index on delete; the revisions are orphaned only via `note_id`, so they
+ * are removed in the same transaction. The row is captured before the drop so
+ * the caller can confirm what was removed.
+ */
+export function deleteNote(db: Db, id: number): DeleteOk | WriteError {
+  if (!noteExists(db, id)) return { ok: false, error: `nota ${id} não encontrada` }
+  const note = loadNote(db, id)
+  if (!note) return { ok: false, error: `nota ${id} não encontrada` }
+  try {
+    db.prepare("BEGIN").run()
+    // Drop the note first: the AFTER DELETE trigger removes it from notes_fts.
+    db.prepare("DELETE FROM notes WHERE id = ?").run(id)
+    db.prepare("DELETE FROM note_revisions WHERE note_id = ?").run(id)
+    db.prepare("COMMIT").run()
+  } catch {
+    try {
+      db.prepare("ROLLBACK").run()
+    } catch {
+      /* best effort */
+    }
+    return { ok: false, error: `não foi possível remover a nota ${id} de forma atômica` }
+  }
+  return { ok: true, note }
+}
+
 /* ------------------------------------------------------------------ */
 /* Text rendering (the CLI-style output the tools return)              */
 /* ------------------------------------------------------------------ */
@@ -660,6 +757,7 @@ export function renderRows(header: string, rows: NoteRow[]): string {
     const flags = flagsOf(r)
     if (flags.length) out.push("   " + flags.join(" · "))
     if (r.tags) out.push(`Tags: ${r.tags}`)
+    if (r.scope) out.push(`Scope: ${r.scope}`)
     out.push(`Conteúdo:\n${r.content}\n${DASH}`)
   }
   return out.join("\n")
@@ -673,6 +771,7 @@ export function renderRevision(rev: RevisionRow): string {
   const flags = flagsOf(rev)
   if (flags.length) out.push("   " + flags.join(" · "))
   if (rev.tags) out.push(`Tags: ${rev.tags}`)
+  if (rev.scope) out.push(`Scope: ${rev.scope}`)
   out.push(`Conteúdo:\n${rev.content}`)
   return out.join("\n")
 }

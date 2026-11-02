@@ -107,6 +107,13 @@ const addInput = z.object({
     .string()
     .optional()
     .describe("Space-separated keywords, without '#' (e.g. 'selinux module')."),
+  scope: z
+    .string()
+    .optional()
+    .describe(
+      "How far the fact applies: 'global' (machine-independent, the default), " +
+        "'project:<name>' or 'machine:<name>'. One token, no spaces.",
+    ),
   author: z
     .string()
     .optional()
@@ -154,7 +161,7 @@ export const add = {
     }
 
     const { db } = await requireStore();
-    const result = addNote(db, { category, title: args.title, content, tags, author });
+    const result = addNote(db, { category, title: args.title, content, tags, author, scope: args.scope });
     if (!result.ok) return fail(result.error);
     return { content: renderAdd(result), metadata: { category, author, exit: 0 } };
   },
@@ -172,6 +179,13 @@ const updateInput = z.object({
     .enum(CATEGORIES)
     .optional()
     .describe("New category, only if the note was filed wrongly."),
+  scope: z
+    .string()
+    .optional()
+    .describe(
+      "New scope: 'global', 'project:<name>' or 'machine:<name>' " +
+        "(empty string clears it).",
+    ),
 });
 type UpdateArgs = z.infer<typeof updateInput>;
 
@@ -193,11 +207,12 @@ export const update = {
       args.title === undefined &&
       args.content === undefined &&
       args.tags === undefined &&
-      args.category === undefined
+      args.category === undefined &&
+      args.scope === undefined
     ) {
       return {
         content:
-          "❌ Nothing to update. Pass at least one of title/content/tags/category.\n" +
+          "❌ Nothing to update. Pass at least one of title/content/tags/category/scope.\n" +
           "If the goal is to record new information, use notes.add instead.",
         metadata: { rejected: true },
       };
@@ -229,6 +244,7 @@ export const update = {
       tags: args.tags,
       content: args.content,
       category: args.category,
+      scope: args.scope,
     });
     if (!result.ok) return fail(result.error);
     return { content: renderUpdate(result), metadata: { id: args.id, exit: 0 } };
