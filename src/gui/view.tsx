@@ -104,8 +104,14 @@ export function NotesView() {
       setAllNotes(all)
       // Filters are multi-selects: drop only the values that no longer exist,
       // keep the rest, so picking several never collapses the whole selection.
-      setScopeFilter(scope.filter((s) => all.some((n) => (n.scope ?? "") === s)))
-      setTagFilter(tag.filter((t) => all.some((n) => tagsOf(n).includes(t))))
+      // Only write when the selection actually changes — otherwise the effect
+      // reading these signals would re-run `loadNotes` and loop forever.
+      const arraysSame = (a: readonly string[], b: readonly string[]): boolean =>
+        a.length === b.length && a.every((v, i) => v === b[i])
+      const nextScope = scope.filter((s) => all.some((n) => (n.scope ?? "") === s))
+      const nextTag = tag.filter((t) => all.some((n) => tagsOf(n).includes(t)))
+      if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
+      if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
       const res = q
         ? ((await api.search({ query: q, all: true })) as unknown as Note[])
         : all
