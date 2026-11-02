@@ -341,6 +341,28 @@ export function NotesView() {
   }
 
   /* ---------- render helpers ---------- */
+  // Tags are stored as a single space-separated string; render them as chips
+  // so they read as metadata instead of blending into the title.
+  const tagList = (n: Note): string[] =>
+    (n.tags ?? "").split(/\s+/).filter(Boolean)
+
+  const tagChips = (n: Note, max?: number) => {
+    const tags = tagList(n)
+    const shown = max === undefined ? tags : tags.slice(0, max)
+    return (
+      <Show when={tags.length > 0}>
+        <span class="tags">
+          {shown.map((t) => (
+            <span class="tag">{t}</span>
+          ))}
+          <Show when={max !== undefined && tags.length > shown.length}>
+            <span class="tag tag-more">+{tags.length - shown.length}</span>
+          </Show>
+        </span>
+      </Show>
+    )
+  }
+
   const trustBadges = (n: Note) => (
     <span class="badges">
       <Show when={n.pinned}>
@@ -371,6 +393,7 @@ export function NotesView() {
           <span class="note-title" title={n.title}>
             {n.title}
           </span>
+          {tagChips(n, 2)}
           {trustBadges(n)}
           <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
         </button>
@@ -391,9 +414,7 @@ export function NotesView() {
             <Show when={n.author}>
               <span>por {n.author}</span>
             </Show>
-            <Show when={n.tags}>
-              <span>· {n.tags}</span>
-            </Show>
+            {tagChips(n)}
           </div>
           <pre class="note-content">{n.content}</pre>
           <div class="actions">
@@ -502,8 +523,29 @@ export function NotesView() {
         .note-id { font-weight: 550; color: var(--v2-text-text-muted); }
         .note-cat { font-size: 11px; color: var(--v2-text-text-faint); }
         .note-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .badges { display: flex; gap: 4px; flex: 0 0 auto; }
-        .badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
+        .tags {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          flex: 0 1 auto;
+          min-width: 0;
+          max-width: 45%;
+          overflow: hidden;
+        }
+        .tag {
+          font-size: 10.5px;
+          line-height: 1.6;
+          border-radius: 999px;
+          padding: 0 6px;
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-muted);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 110px;
+        }
+        .tag-more { color: var(--v2-text-text-faint); }
+        .badges { display: flex; gap: 4px; flex: 0 0 auto; }        .badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
         .badge-pinned { border: 1px solid var(--v2-border-border-muted); color: var(--v2-icon-icon-base); }
         .badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
         .badge-retracted { border: 1px solid var(--v2-state-border-danger); color: var(--v2-state-fg-danger); }
@@ -517,6 +559,7 @@ export function NotesView() {
           color: var(--v2-text-text-faint);
           margin-bottom: 6px;
         }
+        .meta .tags { max-width: none; flex-wrap: wrap; }
         .note-content {
           margin: 0;
           white-space: pre-wrap;
