@@ -173,10 +173,13 @@ export function NotesView() {
   const [saving, setSaving] = createSignal(false)
   const [formOpen, setFormOpen] = createSignal(false)
   const [form, setForm] = createSignal(defaultForm)
-  const [notes, setNotes] = createSignal<Note[]>([])
   // Unfiltered snapshot behind the scope/tag dropdowns: the options must not
   // shrink to whatever the active filter currently matches.
   const [allNotes, setAllNotes] = createSignal<Note[]>([])
+  // Fetched, unfiltered results for the list view (all when there is no query,
+  // the search result when there is). Filters (retracted/pinned/scope/tag) are
+  // applied reactively below, so deselecting an option re-filters instantly.
+  const [resNotes, setResNotes] = createSignal<Note[]>([])
   const [page, setPage] = createSignal(0)
 
   const locale = () => ctx.locale.locale()
@@ -211,10 +214,6 @@ export function NotesView() {
   /* ---------- loading ---------- */
   const loadNotes = async () => {
     const q = query().trim()
-    const pinned = pinnedOnly()
-    // "Retiradas" is a filter, not a toggle that adds them to the rest: keep
-    // only the retracted rows (and drop them when the filter is off).
-    const retractedOnly = showRetracted()
     const scope = scopeFilter()
     const tag = tagFilter()
     setLoading(true)
@@ -232,20 +231,13 @@ export function NotesView() {
       const nextTag = tag.filter((t) => all.some((n) => tagsOf(n).includes(t)))
       if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
       if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
+      // Store the unfiltered result; scope/tag/retracted/pinned are applied
+      // reactively in `filteredNotes`, so changing a filter never needs a
+      // re-fetch.
       const res = q
         ? ((await api.search({ query: q, all: true })) as unknown as Note[])
         : all
-      let out = res
-      out = out.filter((n) =>
-        retractedOnly ? n.retractedAt !== undefined : n.retractedAt === undefined
-      )
-      if (pinned) out = out.filter((n) => n.pinned)
-      if (scope.length) out = out.filter((n) => scope.includes(n.scope ?? ""))
-      if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
-      setNotes(out)
-      // Keep the current page valid after a write or a filter change.
-      const maxPage = Math.max(0, Math.ceil(out.length / PAGE_SIZE) - 1)
-      if (page() > maxPage) setPage(maxPage)
+      setResNotes(res)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -253,11 +245,33 @@ export function NotesView() {
     }
   }
 
-  // Re-runs when query / filters change (those signals are read inside loadNotes).
+  // Re-runs only when the query changes (and on mount), because the fetch is
+  // the only thing the filters no longer drive — they re-filter in
+  // `filteredNotes` above. Read `query()` explicitly so the fetch does not
+  // also re-run on filter changes.
   createEffect(() => {
-    // A new query or filter always starts at the first page.
+    const _q = query()
     setPage(0)
     void loadNotes()
+  })
+
+  // Keep the multi-select filters pointing only at values that still exist,
+  // so deleting a note can't leave a phantom selection. Cheap: no fetch.
+  const arraysSame = (a: readonly string[], b: readonly string[]): boolean =>
+    a.length === b.length && a.every((v, i) => v === b[i])
+  createEffect(() => {
+    const scope = scopeFilter()
+    const tag = tagFilter()
+    const nextScope = scope.filter((s) => allNotes().some((n) => (n.scope ?? "") === s))
+    const nextTag = tag.filter((t) => allNotes().some((n) => tagsOf(n).includes(t)))
+    if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
+    if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
+  })
+
+  // Keep the current page valid when the filtered result shrinks.
+  createEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredNotes().length / PAGE_SIZE) - 1)
+    if (page() > maxPage) setPage(maxPage)
   })
 
   // Filter choices come from the unfiltered snapshot, so picking one scope or
@@ -455,11 +469,26 @@ export function NotesView() {
   }
 
   /* ---------- derived ---------- */
-  const count = createMemo(() => notes().length)
-  const pageCount = createMemo(() => Math.max(1, Math.ceil(notes().length / PAGE_SIZE)))
+  // Reactive filter application: retracted/pinned/scope/tag are applied here,
+  // so deselecting an option re-filters instantly with no re-fetch (and no
+  // stale read from an async load).
+  const filteredNotes = createMemo(() => {
+    let out = resNotes()
+    out = out.filter((n) =>
+      showRetracted() ? n.retractedAt !== undefined : n.retractedAt === undefined
+    )
+    if (pinnedOnly()) out = out.filter((n) => n.pinned)
+    const scope = scopeFilter()
+    if (scope.length) out = out.filter((n) => scope.includes(n.scope ?? ""))
+    const tag = tagFilter()
+    if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
+    return out
+  })
+  const count = createMemo(() => filteredNotes().length)
+  const pageCount = createMemo(() => Math.max(1, Math.ceil(filteredNotes().length / PAGE_SIZE)))
   const pagedNotes = createMemo(() => {
     const start = page() * PAGE_SIZE
-    return notes().slice(start, start + PAGE_SIZE)
+    return filteredNotes().slice(start, start + PAGE_SIZE)
   })
   const revs = createMemo(() => detail()?.revisions ?? [])
 
@@ -1135,7 +1164,7 @@ export function NotesView() {
       </Show>
 
       <div class="notes">
-        <Show when={notes().length === 0 && !loading()}>
+        <Show when={filteredNotes().length === 0 && !loading()}>
           <div class="empty">
             <ctx.ui.Icon name="file-document" size="large" class="empty-icon" />
             <div>
