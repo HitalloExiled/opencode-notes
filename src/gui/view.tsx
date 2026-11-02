@@ -137,18 +137,28 @@ function MultiSelect(props: MultiSelectProps) {
               </span>
             </Show>
           </div>
-          <span class="filter-btn-caret" aria-hidden="true" />
+          <Show when={value().length === 0}>
+            <span class="filter-btn-caret" aria-hidden="true" />
+          </Show>
+          <Show when={value().length > 0}>
+            <span
+              class="filter-btn-x"
+              role="button"
+              aria-label={`Limpar ${label}`}
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); clear(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  clear();
+                }
+              }}
+            >
+              <span class="filter-clear-x" aria-hidden="true">×</span>
+            </span>
+          </Show>
         </button>
-        <Show when={value().length > 0}>
-          <button
-            class="filter-clear"
-            type="button"
-            aria-label={`Limpar ${label}`}
-            onClick={clear}
-          >
-            <span class="filter-clear-x" aria-hidden="true">×</span>
-          </button>
-        </Show>
       </div>
 
       <div
@@ -827,26 +837,30 @@ export function NotesView() {
           transform: rotate(45deg);
           transition: transform 0.12s ease;
         }
-        /* Small "clear" button next to the combo when there is a selection. */
-        .filter-clear {
+        /* "Clear" control sits inside the combo, exactly where the chevron
+           sits: shown only while there is a selection, it clears the whole
+           selection without opening the dropdown. */
+        .filter-btn-x {
           flex: 0 0 auto;
-          min-height: 32px;
-          align-self: stretch;
+          min-width: 24px;
+          height: 24px;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 0 7px;
-          border: 1px solid var(--v2-border-border-muted);
-          border-radius: 4px;
-          background: var(--v2-background-bg-layer-02);
-          color: var(--v2-text-text-base);
-          font: inherit;
+          border-radius: 50%;
           cursor: pointer;
           user-select: none;
+          color: var(--v2-text-text-muted);
         }
-        .filter-clear:hover { border-color: var(--v2-border-border-strong); }
-        .filter-clear:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
-        .filter-clear-x { font-size: 16px; line-height: 1; }
+        .filter-btn-x:hover {
+          background: var(--v2-overlay-simple-overlay-hover);
+          color: var(--v2-text-text-base);
+        }
+        .filter-btn-x:focus-visible {
+          outline: 2px solid var(--v2-border-border-focus);
+          outline-offset: 0;
+        }
+        .filter-clear-x { font-size: 15px; line-height: 1; }
         .filter-panel {
           position: absolute;
           top: calc(100% + 4px);
