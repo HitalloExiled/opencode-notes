@@ -55,6 +55,86 @@ const defaultForm: FormState = {
 const tagsOf = (note: Note): string[] =>
   (note.tags ?? "").split(/\s+/).filter(Boolean)
 
+/* ------------------------------------------------------------------ */
+/* Multi-select (combo)                                                */
+/* ------------------------------------------------------------------ */
+/*
+ * A combo multi-select: a compact button that opens a checkbox-list
+ * dropdown. Selections are an array of option values. Opening/closing is
+ * controlled by the parent, which also owns the shared "click outside any
+ * combo to close it + Escape" handler — so this component needs no refs or
+ * per-combo listeners (this solid-js build does not expose `createRef`).
+ */
+type MultiSelectProps = {
+  label: string
+  placeholder: string
+  options: string[]
+  value: string[]
+  onValueChange: (v: string[]) => void
+  open: boolean
+  onOpenChange: () => void
+}
+
+function MultiSelect(props: MultiSelectProps) {
+  const { label, placeholder, options, value, onValueChange, open, onOpenChange } = props
+
+  const toggle = (opt: string) => {
+    const has = value.includes(opt)
+    onValueChange(has ? value.filter((v) => v !== opt) : [...value, opt])
+  }
+  const clear = () => onValueChange([])
+
+  // Compact display on the button: placeholder when empty, else up to two
+  // values plus a "+N" count, so long selections still fit the chip.
+  const display = createMemo(() => {
+    const n = value.length
+    if (n === 0) return placeholder
+    if (n === 1) return value[0]
+    return `${value.slice(0, 2).join(", ")} +${n - 2}`
+  })
+
+  return (
+    <div class="filter-cell">
+      <button
+        class="filter-btn"
+        type="button"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={onOpenChange}
+      >
+        <span class={`filter-btn-label ${value.length === 0 ? "is-placeholder" : ""}`}>
+          {display()}
+        </span>
+        <span class="filter-btn-caret" aria-hidden="true" />
+      </button>
+
+      <Show when={open}>
+        <div class="filter-panel">
+          <div class="filter-panel-head">
+            <span class="filter-panel-title">{label}</span>
+            <Show when={value.length > 0}>
+              <button class="btn-app is-ghost" type="button" onClick={clear}>
+                Limpar
+              </button>
+            </Show>
+          </div>
+          <div class="filter-panel-list">
+            {options.map((opt) => (
+              <label class="filter-option">
+                <input
+                  type="checkbox"
+                  checked={value.includes(opt)}
+                  onChange={() => toggle(opt)}
+                />
+                <span>{opt}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </Show>
+    </div>
+  )
+}
 
 const PAGE_SIZE = 25
 
@@ -72,6 +152,9 @@ export function NotesView() {
   const [pinnedOnly, setPinnedOnly] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
+  // Only one combo can be open at a time; the single signal drives both the
+  // "Escopo" and "Tag" buttons (each combo's `open` is derived from here).
+  const [openFilter, setOpenFilter] = createSignal<string | null>(null)
   const [selectedId, setSelectedId] = createSignal<number | null>(null)
   const [detail, setDetail] = createSignal<NoteDetail | null>(null)
   const [revisionsOpen, setRevisionsOpen] = createSignal(false)
@@ -87,6 +170,33 @@ export function NotesView() {
   const [page, setPage] = createSignal(0)
 
   const locale = () => ctx.locale.locale()
+
+  // Toggle a combo open/closed (switching to another simply re-targets the
+  // single `openFilter`, so only one panel is ever visible).
+  const toggleFilter = (which: "scope" | "tag") =>
+    setOpenFilter((v) => (v === which ? null : which))
+
+  // Close any open combo when the pointer lands outside a `.filter-cell`, or on
+  // Escape. `closest` needs no refs: every combo's button + panel live inside its
+  // own `.filter-cell`, so a click inside one never closes it, and a click
+  // anywhere else closes whatever is open.
+  createEffect(() => {
+    if (!openFilter()) return
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element
+      if (t.closest(".filter-cell")) return
+      setOpenFilter(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenFilter(null)
+    }
+    document.addEventListener("mousedown", onDown)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDown)
+      document.removeEventListener("keydown", onKey)
+    }
+  })
 
   /* ---------- loading ---------- */
   const loadNotes = async () => {
@@ -573,33 +683,93 @@ export function NotesView() {
         .notes-count { font-size: 12px; color: var(--v2-text-text-muted); }
         .spacer { flex: 1; }
         .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-        .filter-row { display: flex; gap: 6px; margin-bottom: 8px; }
-        .filter-row select {
-          flex: 1;
-          min-width: 0;
+        .filter-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
+        /* Each combo is its own column; the dropdown hangs from the button. */
+        .filter-cell { position: relative; flex: 1; min-width: 0; }
+        .filter-btn {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          width: 100%;
+          min-height: 32px;
+          padding: 4px 8px;
           border: 1px solid var(--v2-border-border-muted);
           border-radius: 4px;
           background: var(--v2-background-bg-layer-02);
           color: var(--v2-text-text-base);
           font: inherit;
-          padding: 2px 6px;
+          cursor: pointer;
+          user-select: none;
+          text-align: left;
         }
-        /* Multi-select boxes: give them a stable height so the selected
-           values read as a set rather than a one-line scrollbox. */
-        .filter-row select.filter-select {
-          height: 92px;
-          resize: none;
+        .filter-btn:hover { border-color: var(--v2-border-border-strong); }
+        .filter-btn:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
+        .filter-btn-label {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
-        /* Native dropdowns paint a white surface on Linux; the options must
-           carry the theme colors or their text washes out. */
-        .filter-row select option {
-          background: var(--v2-background-bg-layer-02);
+        .filter-btn-label.is-placeholder { color: var(--v2-text-text-faint); font-style: italic; }
+        .filter-btn-caret {
+          flex: 0 0 auto;
+          width: 8px;
+          height: 8px;
+          border-left: 1.5px solid currentColor;
+          border-bottom: 1.5px solid currentColor;
+          transform: rotate(45deg);
+          transition: transform 0.12s ease;
+        }
+        .filter-panel {
+          position: absolute;
+          top: calc(100% + 4px);
+          left: 0;
+          right: 0;
+          z-index: 1000;
+          max-height: 280px;
+          overflow-y: auto;
+          background: var(--v2-background-bg-base);
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 6px;
+          box-shadow: 0 12px 28px rgb(0 0 0 / 0.35);
+        }
+        .filter-panel-head {
+          position: sticky;
+          top: 0;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 6px 8px;
+          font-size: 11px;
+          font-weight: 550;
+          color: var(--v2-text-text-muted);
+          border-bottom: 1px solid var(--v2-border-border-muted);
+          background: var(--v2-background-bg-base);
+        }
+        .filter-panel-list { display: flex; flex-direction: column; gap: 2px; padding: 4px; }
+        .filter-option {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 4px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12.5px;
           color: var(--v2-text-text-base);
         }
-        .filter-row select:focus {
-          outline: 2px solid var(--v2-border-border-focus);
-          outline-offset: 0;
+        .filter-option:hover { background: var(--v2-overlay-simple-overlay-pressed); }
+        .filter-option input[type="checkbox"] {
+          margin: 0;
+          flex: 0 0 auto;
+          accent-color: var(--v2-state-fg-success);
         }
+        .filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .filter-panel-head .btn-app { font-size: 11px; padding: 2px 8px; color: var(--v2-text-text-muted); }
+        .filter-panel-head .btn-app:hover { color: var(--v2-text-text-base); }
         .notes { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; min-height: 0; }
         .note {
           border: 1px solid var(--v2-border-border-muted);
@@ -842,44 +1012,30 @@ export function NotesView() {
         </button>
       </div>
 
-            <Show when={scopeOptions().length > 0 || tagOptions().length > 0}>
+                  <Show when={scopeOptions().length > 0 || tagOptions().length > 0}>
         <div class="filter-row">
-          <select
-            class="filter-select"
-            multiple
-            aria-label="Filtrar por escopo"
-            value={scopeFilter()}
-            onChange={
-              (e) =>
-                setScopeFilter(
-                  Array.from(e.currentTarget.selectedOptions)
-                    .filter((o) => o.value !== "")
-                    .map((o) => o.value)
-                )
-            }
-          >
-            {scopeOptions().map((scope) => (
-              <option value={scope}>{scope}</option>
-            ))}
-          </select>
-          <select
-            class="filter-select"
-            multiple
-            aria-label="Filtrar por tag"
-            value={tagFilter()}
-            onChange={
-              (e) =>
-                setTagFilter(
-                  Array.from(e.currentTarget.selectedOptions)
-                    .filter((o) => o.value !== "")
-                    .map((o) => o.value)
-                )
-            }
-          >
-            {tagOptions().map((tag) => (
-              <option value={tag}>{tag}</option>
-            ))}
-          </select>
+          <Show when={scopeOptions().length > 0}>
+            <MultiSelect
+              label="Escopo"
+              placeholder="Todos os escopos"
+              options={scopeOptions()}
+              value={scopeFilter()}
+              onValueChange={setScopeFilter}
+              open={openFilter() === "scope"}
+              onOpenChange={() => toggleFilter("scope")}
+            />
+          </Show>
+          <Show when={tagOptions().length > 0}>
+            <MultiSelect
+              label="Tag"
+              placeholder="Todas as tags"
+              options={tagOptions()}
+              value={tagFilter()}
+              onValueChange={setTagFilter}
+              open={openFilter() === "tag"}
+              onOpenChange={() => toggleFilter("tag")}
+            />
+          </Show>
         </div>
       </Show>
 
