@@ -113,30 +113,31 @@ function MultiSelect(props: MultiSelectProps) {
         <span class="filter-btn-caret" aria-hidden="true" />
       </button>
 
-      <Show when={open()}>
-        <div class="filter-panel">
-          <div class="filter-panel-head">
-            <span class="filter-panel-title">{label}</span>
-            <Show when={value.length > 0}>
-              <button class="btn-app is-ghost" type="button" onClick={clear}>
-                Limpar
-              </button>
-            </Show>
-          </div>
-          <div class="filter-panel-list">
-            {options.map((opt) => (
-              <label class="filter-option">
-                <input
-                  type="checkbox"
-                  checked={value.includes(opt)}
-                  onChange={() => toggle(opt)}
-                />
-                <span>{opt}</span>
-              </label>
-            ))}
-          </div>
+      <div
+        class={open() ? "filter-panel" : "filter-panel is-hidden"}
+        aria-hidden={!open()}
+      >
+        <div class="filter-panel-head">
+          <span class="filter-panel-title">{label}</span>
+          <Show when={value.length > 0}>
+            <button class="btn-app is-ghost" type="button" onClick={clear}>
+              Limpar
+            </button>
+          </Show>
         </div>
-      </Show>
+        <div class="filter-panel-list">
+          {options.map((opt) => (
+            <label class="filter-option">
+              <input
+                type="checkbox"
+                checked={value.includes(opt)}
+                onChange={() => toggle(opt)}
+              />
+              <span>{opt}</span>
+            </label>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -764,6 +765,9 @@ export function NotesView() {
           border-radius: 6px;
           box-shadow: 0 12px 28px rgb(0 0 0 / 0.35);
         }
+        /* Always mounted (checkboxes keep state); closed = hidden, not unmounted,
+           so selected options never disappear on close/reopen. */
+        .filter-panel.is-hidden { display: none; }
         .filter-panel-head {
           position: sticky;
           top: 0;
