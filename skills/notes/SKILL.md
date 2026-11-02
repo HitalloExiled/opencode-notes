@@ -42,8 +42,9 @@ database directly (the same store the side panel uses).
 | `notes.unpin` | 📎 stop injecting a note at session start (it remains searchable) |
 | `notes.doctor` | diagnose memory/schema/FTS5 when something fails |
 
-Humans can do the same from the desktop app's **Notes** panel (pinned side tab:
-list, search, filters, full note detail, revisions, and the same actions).
+Humans can do the same from the desktop app's **Notes** panel (a side tab you
+can close and reopen from "+ / New tab" or `mod+shift+n`: list, search,
+filters, full note detail, revisions, and the same actions).
 
 ## Pinning: the notes that travel with every session
 

@@ -2,7 +2,7 @@
  * Window-side registration for the notes side panel.
  *
  * Runs in the renderer. Registers:
- *  - a pinned "Notes" tab in the session's side region (`Panel`),
+ *  - a removable "Notes" tab in the session's side region (`Panel`),
  *  - a command palette / keybind / slash entry (`Command`),
  *  - a "+ / New tab" menu entry (`MenuItem`).
  */
@@ -19,13 +19,12 @@ import { NotesView } from "./view"
 export const openNotesId = "notes"
 
 export function setup(ctx: SetupContext<never>): void {
-  // Stable (pinned, constant) tab object: the host reads the label once per
-  // session switch and does not re-render it on every routing event.
+  // Stable (constant) tab object: the host reads the label once per session
+  // switch and does not re-render it on every routing event. It is a regular
+  // tab: the user can close it and reopen it from the command/menu entries.
   const notesTab: PanelTab = {
     id: openNotesId,
     title: "Notas",
-    pinned: true,
-    closable: false,
   }
 
   // Explicit `PanelType` annotation: stops string literals (`region`) from
