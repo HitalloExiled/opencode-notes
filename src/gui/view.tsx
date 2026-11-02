@@ -48,6 +48,10 @@ const defaultForm: FormState = {
 
 const PAGE_SIZE = 25
 
+// Keeps each attached note's composer id unique, so attaching the same note
+// twice adds two independent chips instead of colliding on the same id.
+let attachSeq = 0
+
 export function NotesView() {
   const ctx = usePlugin()
   const api = ctx.main(NotesApi)
@@ -246,6 +250,63 @@ export function NotesView() {
     return new Intl.DateTimeFormat(locale(), { dateStyle: "short", timeStyle: "short" }).format(d)
   }
 
+  /* ---------- composer context ---------- */
+  // Quotes the note into the routed session's next prompt, so the agent reads
+  // the stored memory as part of the user's context.
+  const noteAsQuote = (n: Note): string => {
+    const state = n.retractedAt
+      ? "retracted"
+      : n.disputedAt
+        ? "disputed"
+        : n.verifiedAt
+          ? "verified"
+          : ""
+    const meta = [
+      String(n.category).replace(/^#/, ""),
+      n.tags ? `tags: ${n.tags}` : "",
+      n.author ? `author: ${n.author}` : "",
+      formatTime(n.timestamp),
+      state,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+    return `#${n.id} — ${n.title}\n${meta}\n\n${n.content}`
+  }
+
+  const addToContext = (n: Note) => {
+    const screen = ctx.screen.current()
+    if (!screen) {
+      ctx.toast.show({
+        title: "Nenhuma sessão aberta",
+        description: "Abra uma sessão para adicionar notas ao contexto.",
+        variant: "error",
+      })
+      return
+    }
+    if (!screen.composer.quotable()) {
+      ctx.toast.show({
+        title: "Contexto indisponível agora",
+        description: "O compositor desta sessão não aceita anexos neste momento.",
+        variant: "error",
+      })
+      return
+    }
+    screen.composer.attach({
+      type: "quote",
+      commentID: `note-${n.id}-${++attachSeq}`,
+      text: noteAsQuote(n),
+      source: {
+        label: `#${n.id} ${n.title}`,
+        icon: "file-document",
+        subject: `the note #${n.id} from the notes panel`,
+      },
+    })
+    ctx.toast.show({
+      title: `Nota #${n.id} adicionada ao contexto`,
+      variant: "success",
+    })
+  }
+
   /* ---------- render helpers ---------- */
   const trustBadges = (n: Note) => (
     <span class="badges">
@@ -270,15 +331,26 @@ export function NotesView() {
         n.retractedAt !== undefined ? "retracted" : ""
       } ${selectedId() === n.id ? "selected" : ""}`}
     >
-      <button class="note-head" onClick={() => toggleNote(n.id)}>
-        <span class="note-id">#{n.id}</span>
-        <span class="note-cat">{String(n.category).replace(/^#/, "")}</span>
-        <span class="note-title" title={n.title}>
-          {n.title}
-        </span>
-        {trustBadges(n)}
-        <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
-      </button>
+      <div class="note-row">
+        <button class="note-head" onClick={() => toggleNote(n.id)}>
+          <span class="note-id">#{n.id}</span>
+          <span class="note-cat">{String(n.category).replace(/^#/, "")}</span>
+          <span class="note-title" title={n.title}>
+            {n.title}
+          </span>
+          {trustBadges(n)}
+          <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
+        </button>
+        <ctx.ui.Tooltip value="Adicionar ao contexto">
+          <ctx.ui.IconButton
+            class="note-attach"
+            icon="plus"
+            label={`Adicionar nota #${n.id} ao contexto`}
+            size="small"
+            onClick={() => addToContext(n)}
+          />
+        </ctx.ui.Tooltip>
+      </div>
       <Show when={selectedId() === n.id}>
         <div class="note-body">
           <div class="meta">
@@ -372,11 +444,14 @@ export function NotesView() {
         }
         .note.retracted { opacity: 0.55; }
         .note.selected { border-color: var(--v2-border-border-focus); }
+        .note-row { display: flex; align-items: center; min-width: 0; }
+        .note-attach { flex: 0 0 auto; margin-right: 6px; }
         .note-head {
           display: flex;
           align-items: center;
           gap: 8px;
-          width: 100%;
+          flex: 1;
+          min-width: 0;
           text-align: left;
           background: transparent;
           border: 0;
@@ -385,7 +460,7 @@ export function NotesView() {
           cursor: pointer;
           box-sizing: border-box;
           min-height: 32px;
-          padding: 5px 12px;
+          padding: 5px 8px 5px 12px;
         }
         .note-head:hover { background: var(--v2-overlay-simple-overlay-hover); }
         .note-head:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
