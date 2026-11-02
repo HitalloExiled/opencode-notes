@@ -117,18 +117,30 @@ function MultiSelect(props: MultiSelectProps) {
 
   return (
     <div class="filter-cell">
-      <button
-        class="filter-btn"
-        type="button"
-        aria-expanded={open()}
-        aria-label={label}
-        onClick={onOpenChange}
-      >
-        <span class={`filter-btn-label ${value.length === 0 ? "is-placeholder" : ""}`}>
-          {display()}
-        </span>
-        <span class="filter-btn-caret" aria-hidden="true" />
-      </button>
+      <div class="filter-btn-row">
+        <button
+          class="filter-btn"
+          type="button"
+          aria-expanded={open()}
+          aria-label={label}
+          onClick={onOpenChange}
+        >
+          <span class={`filter-btn-label ${value.length === 0 ? "is-placeholder" : ""}`}>
+            {display()}
+          </span>
+          <span class="filter-btn-caret" aria-hidden="true" />
+        </button>
+        <Show when={value.length > 0}>
+          <button
+            class="filter-clear"
+            type="button"
+            aria-label={`Limpar ${label}`}
+            onClick={clear}
+          >
+            <span class="filter-clear-x" aria-hidden="true">×</span>
+          </button>
+        </Show>
+      </div>
 
       <div
         class={open() ? "filter-panel" : "filter-panel is-hidden"}
@@ -746,12 +758,15 @@ export function NotesView() {
         .filter-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
         /* Each combo is its own column; the dropdown hangs from the button. */
         .filter-cell { position: relative; flex: 1; min-width: 0; }
+        .filter-btn-row { display: flex; gap: 4px; align-items: stretch; }
         .filter-btn {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 6px;
-          width: 100%;
+          flex: 1;
+          width: auto;
+          min-width: 0;
           min-height: 32px;
           padding: 4px 8px;
           border: 1px solid var(--v2-border-border-muted);
@@ -782,6 +797,26 @@ export function NotesView() {
           transform: rotate(45deg);
           transition: transform 0.12s ease;
         }
+        /* Small "clear" button next to the combo when there is a selection. */
+        .filter-clear {
+          flex: 0 0 auto;
+          min-height: 32px;
+          align-self: stretch;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0 7px;
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-base);
+          font: inherit;
+          cursor: pointer;
+          user-select: none;
+        }
+        .filter-clear:hover { border-color: var(--v2-border-border-strong); }
+        .filter-clear:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
+        .filter-clear-x { font-size: 16px; line-height: 1; }
         .filter-panel {
           position: absolute;
           top: calc(100% + 4px);
