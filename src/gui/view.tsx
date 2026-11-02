@@ -17,6 +17,12 @@ import { Show } from "solid-js"
 import { usePlugin } from "@opencode/plugin/gui"
 import { NotesApi } from "./contract"
 import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
+import {
+  applyFilters,
+  displayOf,
+  pruneSelection,
+  tagsOf,
+} from "./filters"
 
 const CATEGORIES = [
   { value: "problem", label: "problem" },
@@ -48,13 +54,6 @@ const defaultForm: FormState = {
   author: "",
   scope: "",
 }
-
-/* ------------------------------------------------------------------ */
-/* Note helpers                                                        */
-/* ------------------------------------------------------------------ */
-
-const tagsOf = (note: Note): string[] =>
-  (note.tags ?? "").split(/\s+/).filter(Boolean)
 
 /* ------------------------------------------------------------------ */
 /* Multi-select (combo)                                                */
@@ -95,13 +94,9 @@ function MultiSelect(props: MultiSelectProps) {
   const clear = () => onValueChange([])
 
   // Compact display on the button: placeholder when empty, else up to two
-  // values plus a "+N" count, so long selections still fit the chip.
-  const display = createMemo(() => {
-    const n = value.length
-    if (n === 0) return placeholder
-    if (n === 1) return value[0]
-    return `${value.slice(0, 2).join(", ")} +${n - 2}`
-  })
+  // values plus a "+N" count, so long selections still fit the chip. The text
+  // logic is pure (src/gui/filters.ts) and unit-tested.
+  const display = createMemo(() => displayOf(value, placeholder))
 
   return (
     <div class="filter-cell">
@@ -257,15 +252,13 @@ export function NotesView() {
 
   // Keep the multi-select filters pointing only at values that still exist,
   // so deleting a note can't leave a phantom selection. Cheap: no fetch.
-  const arraysSame = (a: readonly string[], b: readonly string[]): boolean =>
-    a.length === b.length && a.every((v, i) => v === b[i])
   createEffect(() => {
-    const scope = scopeFilter()
-    const tag = tagFilter()
-    const nextScope = scope.filter((s) => allNotes().some((n) => (n.scope ?? "") === s))
-    const nextTag = tag.filter((t) => allNotes().some((n) => tagsOf(n).includes(t)))
-    if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
-    if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
+    const existsScope = (s: string) => allNotes().some((n) => (n.scope ?? "") === s)
+    const existsTag = (t: string) => allNotes().some((n) => tagsOf(n).includes(t))
+    const nextScope = pruneSelection(scopeFilter(), existsScope)
+    const nextTag = pruneSelection(tagFilter(), existsTag)
+    if (nextScope !== scopeFilter()) setScopeFilter(nextScope)
+    if (nextTag !== tagFilter()) setTagFilter(nextTag)
   })
 
   // Keep the current page valid when the filtered result shrinks.
@@ -471,19 +464,16 @@ export function NotesView() {
   /* ---------- derived ---------- */
   // Reactive filter application: retracted/pinned/scope/tag are applied here,
   // so deselecting an option re-filters instantly with no re-fetch (and no
-  // stale read from an async load).
-  const filteredNotes = createMemo(() => {
-    let out = resNotes()
-    out = out.filter((n) =>
-      showRetracted() ? n.retractedAt !== undefined : n.retractedAt === undefined
-    )
-    if (pinnedOnly()) out = out.filter((n) => n.pinned)
-    const scope = scopeFilter()
-    if (scope.length) out = out.filter((n) => scope.includes(n.scope ?? ""))
-    const tag = tagFilter()
-    if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
-    return out
-  })
+  // stale read from an async load). All the predicate logic lives in
+  // `applyFilters` (src/gui/filters.ts) and is unit-tested.
+  const filteredNotes = createMemo(() =>
+    applyFilters(resNotes(), {
+      scope: scopeFilter(),
+      tag: tagFilter(),
+      pinnedOnly: pinnedOnly(),
+      showRetracted: showRetracted(),
+    })
+  )
   const count = createMemo(() => filteredNotes().length)
   const pageCount = createMemo(() => Math.max(1, Math.ceil(filteredNotes().length / PAGE_SIZE)))
   const pagedNotes = createMemo(() => {
