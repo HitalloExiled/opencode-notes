@@ -3,8 +3,9 @@
  *
  * Renders the plugin's own `ctx.ui` components (buttons, text fields,
  * loader, icons) and the app's CSS tokens (`--v2-*`, `--font-*`), so the
- * panel follows the user's theme (light/dark), fonts and language. UI copy
- * is pt-BR; code stays in English.
+ * panel follows the user's theme (light/dark), fonts and language. UI copy is
+ * localized (pt-br or en-us, following the Opencode locale; en-us is the fallback).
+ * Code stays in English.
  *
  * Data: reads notes over the GUI IPC (`ctx.main(NotesApi)`), full CRUD —
  * add / edit / confirm / dispute / retract / pin / unpin / restore —
@@ -15,36 +16,29 @@ import { createEffect, createMemo, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
 import { Show } from "solid-js"
 import { usePlugin } from "@opencode/plugin/gui"
+import { scopeChipLabel, useT } from "./i18n"
 import { NotesApi } from "./contract"
 import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
 import {
   applyFilters,
   filterByQuery,
   pruneSelection,
-  scopeLabel,
   scopeOf,
   tagsOf,
 } from "./filters"
 
 // `value` stays in English (it is the data written to the DB and read by the
-// notes tools); `label` is the pt-BR copy shown in the GUI.
+// notes tools). Display text lives in the i18n tables (`category.<value>`);
+// `CATEGORIES` only enumerates the known values.
 const CATEGORIES = [
-  { value: "problem", label: "Problema" },
-  { value: "decision", label: "Decisão" },
-  { value: "config", label: "Configuração" },
-  { value: "snippet", label: "Trecho" },
-  { value: "architecture", label: "Arquitetura" },
-  { value: "user", label: "Usuário" },
-  { value: "general", label: "Geral" },
-]
-
-/** pt-BR label for a stored category value; falls back to the raw value
- * (covers categories created outside this list). */
-function categoryLabel(value: string): string {
-  return (
-    CATEGORIES.find((c) => c.value === value)?.label ?? value
-  )
-}
+  { value: "problem" },
+  { value: "decision" },
+  { value: "config" },
+  { value: "snippet" },
+  { value: "architecture" },
+  { value: "user" },
+  { value: "general" },
+] as const
 
 type FormState = {
   mode: "add" | "edit"
@@ -241,6 +235,27 @@ let attachSeq = 0
 export function NotesView() {
   const ctx = usePlugin()
   const api = ctx.main(NotesApi)
+  // Localized strings for the active Opencode locale (pt-br or en-us,
+  // everything else falls back to en-us).
+  const t = useT()
+
+  // Display label for a stored category value (data stays in English;
+  // falls back to the raw value for categories outside the known list).
+  const categoryLabel = (v: string): string => t(`category.${v}`, v)
+
+  // Short scope chip: localized type names; the project name is data and
+  // is never translated.
+  const noteScopeLabel = (n: Note): string => scopeChipLabel(t, n.scope, n.project)
+
+  // Scope filter option label: same idea as the chip, driven by the raw
+  // option value ("all" / "machine" / "project" / a project path). Type
+  // names are localized; project paths are data and shown by their basename.
+  const scopeOptionLabel = (opt: string): string => {
+    if (opt === "all") return t("scopeAll")
+    if (opt === "machine") return t("scopeMachine")
+    if (opt === "project") return t("scopeProject")
+    return opt.split("/").pop() ?? opt
+  }
 
   /* ---------- state ---------- */
   const [query, setQuery] = createSignal("")
@@ -436,7 +451,7 @@ export function NotesView() {
       const res = await fn(arg)
       await loadNotes()
       if (!res.ok) {
-        const message = res.error ?? "ação falhou"
+        const message = res.error ?? t("toast.actionError")
         setError(message)
         ctx.toast.show({ title: done, description: message, variant: "error" })
         return
@@ -454,7 +469,7 @@ export function NotesView() {
   const handleAddOrEdit = async () => {
     const f = form()
     if (f.title.trim().length === 0 || f.content.trim().length === 0) {
-      setError("Título e conteúdo são obrigatórios.")
+      setError(t("form.required"))
       return
     }
     const content = f.content.trim()
@@ -488,7 +503,7 @@ export function NotesView() {
         setForm(defaultForm)
         void reloadSelected(res.note?.id ?? null)
       } else {
-        setError(res.error ?? "falha ao salvar")
+        setError(res.error ?? t("form.saveError"))
       }
     } catch (e) {
       setError(String(e))
@@ -539,69 +554,69 @@ export function NotesView() {
   const id = () => selectedId()
   const confirm = () => {
     const current = id()
-    if (current !== null) void doAction(api.confirm, current, "Nota confirmada")
+    if (current !== null) void doAction(api.confirm, current, t("toast.confirm"))
   }
   const dispute = async () => {
     const current = id()
     if (current === null) return
     const why = await ctx.dialogs.prompt({
-      title: "Questionar nota",
-      description: "Descreva por que a nota parece incorreta.",
-      placeholder: "ex.: desatualizada, contradiz a nota #123",
-      submit: "Questionar",
+      title: t("prompt.dispute.title"),
+      description: t("prompt.dispute.desc"),
+      placeholder: t("prompt.dispute.placeholder"),
+      submit: t("prompt.dispute.submit"),
     })
     if (why && why.trim()) {
-      void doAction(api.dispute, { id: current, reason: why.trim() }, "Nota questionada")
+      void doAction(api.dispute, { id: current, reason: why.trim() }, t("toast.dispute"))
     }
   }
   const retract = async () => {
     const current = id()
     if (current === null) return
     const why = await ctx.dialogs.prompt({
-      title: "Retirar nota",
-      description: "A nota passa a ser desconsiderada; pode ser restaurada depois.",
-      placeholder: "motivo (opcional)",
-      submit: "Retirar",
+      title: t("prompt.retract.title"),
+      description: t("prompt.retract.desc"),
+      placeholder: t("prompt.retract.placeholder"),
+      submit: t("prompt.retract.submit"),
     })
     if (why === undefined) return
     void doAction(
       api.retract,
       { id: current, reason: why.trim() || undefined },
-      "Nota retirada"
+      t("toast.retract")
     )
   }
   const pin = () => {
     const current = id()
-    if (current !== null) void doAction(api.pin, current, "Nota fixada")
+    if (current !== null) void doAction(api.pin, current, t("toast.pin"))
   }
   const unpin = () => {
     const current = id()
-    if (current !== null) void doAction(api.unpin, current, "Nota desfixada")
+    if (current !== null) void doAction(api.unpin, current, t("toast.unpin"))
   }
   const remove = async () => {
     const current = id()
     if (current === null) return
     const ok = await ctx.dialogs.confirm({
-      title: "Excluir nota",
-      description: `Excluir permanentemente a nota #${current} e todas as suas versões. Não há como recuperar.`,
-      confirm: "Excluir",
+      title: t("prompt.delete.title"),
+      description: t("prompt.delete.desc", current),
+      confirm: t("prompt.delete.confirm"),
       danger: true,
     })
     if (ok) {
-      void doAction(api.delete, { id: current }, "Nota excluída")
+      void doAction(api.delete, { id: current }, t("toast.remove"))
     }
   }
   const restore = async (rev: Revision) => {
     const current = id()
     if (current === null) return
     const ok = await ctx.dialogs.confirm({
-      title: "Restaurar revisão",
-      description: `A nota será restaurada para a revisão #${rev.id}. A versão atual passa a ser uma revisão anterior.`,
-      confirm: "Restaurar",
+      title: t("prompt.restore.title"),
+      description: t("prompt.restore.desc", rev.id),
+      confirm: t("prompt.restore.confirm"),
       danger: true,
     })
     if (ok) {
-      void doAction(api.restore, { id: current, revisionId: rev.id }, "Revisão restaurada")
+      void doAction(api.restore, { id: current, revisionId: rev.id }, t("toast.restore"))
     }
   }
 
@@ -664,16 +679,16 @@ export function NotesView() {
     const screen = ctx.screen.current()
     if (!screen) {
       ctx.toast.show({
-        title: "Nenhuma sessão aberta",
-        description: "Abra uma sessão para adicionar notas ao contexto.",
+        title: t("toast.noSession"),
+        description: t("toast.noSessionHint"),
         variant: "error",
       })
       return
     }
     if (!screen.composer.quotable()) {
       ctx.toast.show({
-        title: "Contexto indisponível agora",
-        description: "O compositor desta sessão não aceita anexos neste momento.",
+        title: t("toast.contextUnavailable"),
+        description: t("toast.contextUnavailableHint"),
         variant: "error",
       })
       return
@@ -689,7 +704,7 @@ export function NotesView() {
       },
     })
     ctx.toast.show({
-      title: `Nota #${n.id} adicionada ao contexto`,
+      title: t("toast.attach", n.id),
       variant: "success",
     })
   }
@@ -722,16 +737,16 @@ export function NotesView() {
   const trustBadges = (n: Note) => (
     <span class="badges">
       <Show when={n.pinned}>
-        <span class="badge badge-pinned">fixada</span>
+        <span class="badge badge-pinned">{t("badge.pinned")}</span>
       </Show>
       <Show when={n.retractedAt !== undefined}>
-        <span class="badge badge-retracted">retirada</span>
+        <span class="badge badge-retracted">{t("badge.retracted")}</span>
       </Show>
       <Show when={n.disputedAt !== undefined}>
-        <span class="badge badge-disputed">questionada</span>
+        <span class="badge badge-disputed">{t("badge.disputed")}</span>
       </Show>
       <Show when={n.verifiedAt !== undefined && !n.disputedAt && !n.retractedAt}>
-        <span class="badge badge-verified">verificada</span>
+        <span class="badge badge-verified">{t("badge.verified")}</span>
       </Show>
     </span>
   )
@@ -750,22 +765,22 @@ export function NotesView() {
             {n.title}
           </span>
           {tagChips(n, 2)}
-          <Show when={scopeLabel(n)}>
+          <Show when={noteScopeLabel(n)}>
             <span
               class="tag tag-scope"
-              title={n.scope === "project" ? n.project || "project" : n.scope ?? "all"}
+              title={n.scope === "project" ? (n.project ?? t("scopeProject")) : noteScopeLabel(n)}
             >
-              {scopeLabel(n)}
+              {noteScopeLabel(n)}
             </span>
           </Show>
           {trustBadges(n)}
           <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
         </button>
-        <ctx.ui.Tooltip value="Adicionar ao contexto">
+        <ctx.ui.Tooltip value={t("actions.attachTooltip")}>
           <ctx.ui.IconButton
             class="note-attach"
             icon="plus"
-            label={`Adicionar nota #${n.id} ao contexto`}
+            label={t("actions.attach", n.id)}
             size="small"
             onClick={() => addToContext(n)}
           />
@@ -778,9 +793,9 @@ export function NotesView() {
             <Show when={n.author}>
               <span>por {n.author}</span>
             </Show>
-            <Show when={scopeLabel(n)}>
+            <Show when={noteScopeLabel(n)}>
               <span class="tag tag-scope">
-                escopo: {scopeLabel(n)}{n.scope === "project" && n.project ? ` · ${n.project}` : ""}
+                {t("meta.scope", noteScopeLabel(n))}{n.scope === "project" && n.project ? ` · ${n.project}` : ""}
               </span>
             </Show>
             {tagChips(n)}
@@ -789,51 +804,50 @@ export function NotesView() {
           <div class="actions">
             <button class="btn-app" onClick={() => openEdit(n)}>
               <ctx.ui.Icon name="edit" size="small" />
-              Editar
+              {t("actions.edit")}
             </button>
             <Show when={!isConfirmed(n)}>
               <button class="btn-app" onClick={confirm}>
                 <ctx.ui.Icon name="circle-check" size="small" />
-                Confirmar
+                {t("actions.confirm")}
               </button>
             </Show>
             <button class="btn-app" onClick={dispute}>
               <ctx.ui.Icon name="outline-hexagonal-warning" size="small" />
-              Questionar
+              {t("actions.dispute")}
             </button>
             <button class="btn-app is-danger" onClick={retract}>
               <ctx.ui.Icon name="trash" size="small" />
-              Retirar
+              {t("actions.retract")}
             </button>
             <button class="btn-app" onClick={n.pinned ? unpin : pin}>
               <ctx.ui.Icon name={n.pinned ? "close-small" : "lock"} size="small" />
-              {n.pinned ? "Desfixar" : "Fixar"}
+              {n.pinned ? t("actions.unpin") : t("actions.pin")}
             </button>
             <button class="btn-app is-danger" onClick={remove}>
               <ctx.ui.Icon name="trash" size="small" />
-              Excluir
+              {t("actions.remove")}
             </button>
           </div>
           <div class="revisions">
             <button class="btn-app" onClick={() => setRevisionsOpen(!revisionsOpen())}>
               <ctx.ui.Icon name="outline-rotate-clockwise" size="small" />
-              Revisões{revs().length > 0 ? ` · ${revs().length}` : ""}
+              t("revisions.label"){revs().length > 0 ? ` · ${revs().length}` : ""}
             </button>
             <Show when={revisionsOpen()}>
               <div class="rev-list">
                 <Show when={revs().length === 0}>
-                  <div class="muted">Sem versões anteriores.</div>
+                  <div class="muted">{t("revisions.empty")}</div>
                 </Show>
                 {revs().map((r) => (
                   <div class="rev">
                     <div class="rev-head">
-                      Revisão #{r.id} · {formatTime(r.revisedAt)} · válida desde{" "}
-                      {formatTime(r.timestamp)}
+                      t("revisions.head", r.id, formatTime(r.revisedAt), formatTime(r.timestamp))
                     </div>
                     <pre class="note-content small">{r.content}</pre>
                     <button class="btn-app" onClick={() => restore(r)}>
                       <ctx.ui.Icon name="arrow-undo-down" size="small" />
-                      Restaurar
+                      {t("prompt.restore.confirm")}
                     </button>
                   </div>
                 ))}
@@ -1290,21 +1304,21 @@ export function NotesView() {
       <header class="notes-head">
         <span class="notes-title">
           <ctx.ui.Icon name="file-document" size="small" />
-          Notas
+          {t("notesTitle")}
         </span>
-        <span class="notes-count">{count()} notas</span>
+        <span class="notes-count">{t("notesCount", count())}</span>
         <span class="spacer" />
         <button class="btn-app is-pill" onClick={openAdd}>
           <ctx.ui.Icon name="plus" size="small" />
-          Nova nota
+          {t("newNote")}
         </button>
       </header>
 
       <div class="search-row">
         <ctx.ui.TextInput
           type="search"
-          label="Buscar notas"
-          placeholder="Buscar na memória…"
+          label={t("searchLabel")}
+          placeholder={t("searchPlaceholder")}
           value={query()}
           onInput={setQuery}
         />
@@ -1315,22 +1329,23 @@ export function NotesView() {
           class={`btn-app ${pinnedOnly() ? "is-active" : ""}`}
           onClick={() => setPinnedOnly(!pinnedOnly())}
         >
-          Fixadas
+          {t("filterPinned")}
         </button>
         <button
           class={`btn-app ${showRetracted() ? "is-active" : ""}`}
           onClick={() => setShowRetracted(!showRetracted())}
         >
-          Retiradas
+          {t("filterRetracted")}
         </button>
       </div>
 
         <div class="filter-row">
           <Show when={scopeOptions().length > 0}>
             <MultiSelect
-              label="Escopo"
-              placeholder="Todos os escopos"
+              label={t("filter.scope.label")}
+              placeholder={t("filter.scope.placeholder")}
               options={scopeOptions()}
+              display={scopeOptionLabel}
               value={scopeFilter}
               onValueChange={setScopeFilter}
               openFilter={openFilter}
@@ -1339,8 +1354,8 @@ export function NotesView() {
             />
           </Show>
           <MultiSelect
-            label="Categoria"
-            placeholder="Todas as categorias"
+            label={t("filter.category.label")}
+            placeholder={t("filter.category.placeholder")}
             options={CATEGORIES.map((c) => c.value)}
             display={categoryLabel}
             value={categoryFilter}
@@ -1351,8 +1366,8 @@ export function NotesView() {
           />
           <Show when={tagOptions().length > 0}>
             <MultiSelect
-              label="Tag"
-              placeholder="Todas as tags"
+              label={t("filter.tag.label")}
+              placeholder={t("filter.tag.placeholder")}
               options={tagOptions()}
               value={tagFilter}
               onValueChange={setTagFilter}
@@ -1366,7 +1381,7 @@ export function NotesView() {
       <Show when={loading()}>
         <div class="loader-row">
           <ctx.ui.Loader size="small" />
-          <span>Carregando…</span>
+          <span>{t("loading")}</span>
         </div>
       </Show>
       <Show when={error() !== ""}>
@@ -1376,7 +1391,7 @@ export function NotesView() {
       <Show when={formOpen()}>
         <section
           class="form-overlay"
-          aria-label={form().mode === "add" ? "Nova nota" : "Editar nota"}
+          aria-label={form().mode === "add" ? t("form.overlay.add") : t("form.overlay.edit")}
           onClick={(e) => {
             // Click on the dimmed backdrop (not the form itself) closes it.
             if (e.target === e.currentTarget) setFormOpen(false)
@@ -1384,46 +1399,46 @@ export function NotesView() {
         >
         <form class="form" onSubmit={(e) => { e.preventDefault(); void handleAddOrEdit() }}>
           <label>
-            Título
+            {t("form.title.label")}
             <ctx.ui.TextInput
-              label="Título"
+              label={t("form.title.label")}
               value={form().title}
               onInput={(v) => setForm((s) => ({ ...s, title: v }))}
               onSubmit={handleAddOrEdit}
             />
           </label>
           <label>
-            Conteúdo
+            {t("form.content.label")}
             <textarea
               value={form().content}
               onInput={(e) => setForm((s) => ({ ...s, content: e.currentTarget.value }))}
-              placeholder="Registre aqui o que precisa lembrar…"
+              placeholder={t("form.content.placeholder")}
             />
           </label>
           <label>
-            Autor
+            {t("form.author.label")}
             <input
               type="text"
               class="form-author"
               readOnly
               value={form().author}
-              placeholder="auto — quem registrou"
+              placeholder={t("form.author.placeholder")}
             />
           </label>
           <div class="form-grid">
             <label>
-              Categoria
+              {t("form.category.label")}
               <select
                 value={form().category}
                 onChange={(e) => setForm((s) => ({ ...s, category: e.currentTarget.value }))}
               >
                 {CATEGORIES.map((c) => (
-                  <option value={c.value}>{c.label}</option>
+                  <option value={c.value}>{categoryLabel(c.value)}</option>
                 ))}
               </select>
             </label>
             <label>
-              Escopo
+              {t("form.scope.label")}
               <select
                 value={form().scope}
                 onChange={(e) => {
@@ -1440,35 +1455,35 @@ export function NotesView() {
                   }))
                 }}
               >
-                <option value="all">Global</option>
-                <option value="machine">Máquina</option>
-                <option value="project">Projeto</option>
+                <option value="all">{t("scopeAll")}</option>
+                <option value="machine">{t("scopeMachine")}</option>
+                <option value="project">{t("scopeProject")}</option>
               </select>
             </label>
           </div>
           <Show when={form().scope === "project"}>
             <label>
-              Projeto
+              {t("form.project.label")}
               <ctx.ui.TextInput
-                label="Projeto"
-                placeholder="caminho absoluto do projeto"
+                label={t("form.project.label")}
+                placeholder={t("form.project.placeholder")}
                 value={form().project}
                 onInput={(v) => setForm((s) => ({ ...s, project: v }))}
               />
             </label>
           </Show>
           <label>
-            Tags
+            {t("form.tags.label")}
             <ctx.ui.TextInput
-              label="Tags"
-              placeholder="palavras-chave separadas por espaço"
+              label={t("form.tags.label")}
+              placeholder={t("form.tags.placeholder")}
               value={form().tags}
               onInput={(v) => setForm((s) => ({ ...s, tags: v }))}
             />
           </label>
           <div class="form-actions">
             <ctx.ui.Button variant="ghost" onClick={() => setFormOpen(false)}>
-              Cancelar
+              {t("form.cancel")}
             </ctx.ui.Button>
             <ctx.ui.Button
               variant="contrast"
@@ -1476,7 +1491,7 @@ export function NotesView() {
               busy={saving()}
               disabled={!form().title.trim() || !form().content.trim()}
             >
-              {form().mode === "add" ? "Adicionar nota" : "Salvar alterações"}
+              {form().mode === "add" ? t("form.add") : t("form.save")}
             </ctx.ui.Button>
           </div>
         </form>
@@ -1489,24 +1504,24 @@ export function NotesView() {
             <ctx.ui.Icon name="file-document" size="large" class="empty-icon" />
             <div>
               <Show when={query().trim()}>
-                Nenhuma nota corresponde a "{query().trim()}".
+                t("empty.search", query().trim())
               </Show>
               <Show when={!query().trim() && showRetracted()}>
-                Nenhuma nota retirada.
+                t("empty.retracted")
               </Show>
               <Show when={!query().trim() && !showRetracted()}>
-                Nenhuma nota ainda.
+                t("empty.none")
               </Show>
             </div>
             <div class="muted">
               <Show when={query().trim()}>
-                Ajuste a busca ou os filtros.
+                t("empty.hint.search")
               </Show>
               <Show when={!query().trim() && showRetracted()}>
-                Desative o filtro "Retiradas" para ver as demais.
+                t("empty.hint.retracted")
               </Show>
               <Show when={!query().trim() && !showRetracted()}>
-                Registre a primeira com "Nova nota".
+                t("empty.hint.none")
               </Show>
             </div>
           </div>
@@ -1523,9 +1538,9 @@ export function NotesView() {
             disabled={page() === 0}
             onClick={() => setPage(page() - 1)}
           >
-            Anterior
+            {t("page.previous")}
           </ctx.ui.Button>
-          <span class="page-label">Página {page() + 1} de {pageCount()}</span>
+          <span class="page-label">t("page.label", page() + 1, pageCount())</span>
           <ctx.ui.Button
             size="small"
             variant="ghost-muted"
@@ -1533,7 +1548,7 @@ export function NotesView() {
             disabled={page() >= pageCount() - 1}
             onClick={() => setPage(page() + 1)}
           >
-            Próxima
+            {t("page.next")}
           </ctx.ui.Button>
         </div>
       </Show>
