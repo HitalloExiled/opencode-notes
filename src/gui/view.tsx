@@ -805,9 +805,9 @@ export function NotesView() {
           </div>
           <pre class="note-content">{n.content}</pre>
           <div class="actions">
-            <button class="btn-app" onClick={() => openEdit(n)}>
-              <ctx.ui.Icon name="edit" size="small" />
-              {t("actions.edit")}
+            <button class="btn-app" onClick={n.pinned ? unpin : pin}>
+              <ctx.ui.Icon name={n.pinned ? "close-small" : "lock"} size="small" />
+              {n.pinned ? t("actions.unpin") : t("actions.pin")}
             </button>
             <Show when={!isConfirmed(n)}>
               <button class="btn-app" onClick={confirm}>
@@ -823,9 +823,10 @@ export function NotesView() {
               <ctx.ui.Icon name="trash" size="small" />
               {t("actions.retract")}
             </button>
-            <button class="btn-app" onClick={n.pinned ? unpin : pin}>
-              <ctx.ui.Icon name={n.pinned ? "close-small" : "lock"} size="small" />
-              {n.pinned ? t("actions.unpin") : t("actions.pin")}
+            <span class="actions-spacer" />
+            <button class="btn-app" onClick={() => openEdit(n)}>
+              <ctx.ui.Icon name="edit" size="small" />
+              {t("actions.edit")}
             </button>
             <button class="btn-app is-danger" onClick={remove}>
               <ctx.ui.Icon name="trash" size="small" />
@@ -1137,6 +1138,7 @@ export function NotesView() {
         }
         .note-content.small { max-height: 120px; font-size: 11.5px; }
         .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+        .actions-spacer { flex: 1 1 0; min-width: 0; }
         .revisions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
         .rev { border: 1px solid var(--v2-border-border-muted); border-radius: 4px; padding: 8px; }
         .rev-head { font-size: 11.5px; font-weight: 550; color: var(--v2-text-text-faint); margin-bottom: 4px; }
