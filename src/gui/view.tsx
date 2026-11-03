@@ -128,11 +128,11 @@ function MultiSelect(props: MultiSelectProps) {
             </Show>
             <Show when={value().length > 0}>
               <span class="tags">
-                {value().slice(0, 3).map((opt) => (
+                {value().slice(0, 2).map((opt) => (
                   <span class="tag">{opt}</span>
                 ))}
-                {value().length > 3 && (
-                  <span class="tag tag-more">+{value().length - 3}</span>
+                {value().length > 2 && (
+                  <span class="tag tag-more">+{value().length - 2}</span>
                 )}
               </span>
             </Show>
