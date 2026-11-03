@@ -778,7 +778,12 @@ export function NotesView() {
         .notes-title { display: flex; align-items: center; gap: 6px; font-weight: 550; }
         .notes-count { font-size: 12px; color: var(--v2-text-text-muted); }
         .spacer { flex: 1; }
-        .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+        .search-row { margin-bottom: 6px; }
+        .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        /* Filter toggle buttons (Fixadas / Retiradas): the base .btn-app is
+           intentionally flat for action rows, but these need a comfortable
+           hit-area and breathing room. */
+        .chips .btn-app { padding: 4px 12px; }
         .filter-row {
           display: flex;
           flex-wrap: wrap;
