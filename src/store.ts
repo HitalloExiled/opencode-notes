@@ -168,6 +168,15 @@ const MIGRATION_006 = [
   `CREATE INDEX IF NOT EXISTS idx_notes_scope ON notes(scope)`,
 ]
 
+// Legacy `#` prefix on categories (e.g. "#problem") is dropped: categories are
+// plain tokens going forward (see normalizeCategory). Runs once on upgrade and
+// strips the prefix from existing rows in both tables; the notes FTS index
+// follows through its AFTER UPDATE trigger.
+const MIGRATION_007 = [
+  `UPDATE notes SET category = substr(category, 2) WHERE category LIKE '#%'`,
+  `UPDATE note_revisions SET category = substr(category, 2) WHERE category LIKE '#%'`,
+]
+
 const FTS_SCHEMA = [
   `CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     title, content, tags, category,
@@ -189,7 +198,7 @@ const FTS_SCHEMA = [
   END`,
 ]
 
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 /* ------------------------------------------------------------------ */
 /* Schema init / migrations                                            */
@@ -263,6 +272,7 @@ export function initSchema(db: Db): void {
   if (current < 4) apply(db, MIGRATION_004)
   if (current < 5) apply(db, MIGRATION_005)
   if (current < 6) apply(db, MIGRATION_006)
+  if (current < 7) apply(db, MIGRATION_007)
   // Unconditional: every note written before the column existed is lifted
   // from its legacy `Scope:` body line on first boot after the update.
   backfillScopeColumn(db)
@@ -382,7 +392,7 @@ const isPinned = (v: number | boolean): boolean => v === 1 || v === true
 
 export function normalizeCategory(category: string): string {
   const token = category.trim().replace(/^#+/, "")
-  return token ? `#${token}` : "#general"
+  return token ? token : "general"
 }
 
 export function nowTimestamp(): string {
@@ -523,9 +533,9 @@ export function addNote(db: Db, input: AddInput): AddOk | WriteError {
   const scope = normalizeScope(input.scope)
   const content = input.content ?? ""
   if (!title.trim()) return { ok: false, error: "título vazio: a nota ficaria sem identificação." }
-  if (category === "#problem") {
+  if (category === "problem") {
     const missing = missingProblemSections(content)
-    if (missing.length) return { ok: false, error: `#problem sem ${missing.join(", ")}.` }
+    if (missing.length) return { ok: false, error: `problem sem ${missing.join(", ")}.` }
   }
   const timestamp = nowTimestamp()
   const info = db

@@ -444,7 +444,7 @@ export function NotesView() {
     setForm({
       mode: "edit",
       id: n.id,
-      category: (n.category ?? "problem").replace(/^#/, ""),
+      category: n.category ?? "problem",
       title: n.title,
       content: n.content,
       tags: n.tags || "",
@@ -664,7 +664,7 @@ export function NotesView() {
       <div class="note-row">
         <button class="note-head" onClick={() => toggleNote(n.id)}>
           <span class="note-id">#{n.id}</span>
-          <span class="note-cat">{String(n.category).replace(/^#/, "")}</span>
+          <span class="note-cat">{n.category}</span>
           <span class="note-title" title={n.title}>
             {n.title}
           </span>
