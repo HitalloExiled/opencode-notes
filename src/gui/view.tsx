@@ -261,6 +261,15 @@ export function NotesView() {
   const [saving, setSaving] = createSignal(false)
   const [formOpen, setFormOpen] = createSignal(false)
   const [form, setForm] = createSignal(defaultForm)
+  // Escape closes the floating create/edit dialog (backdrop click also works).
+  createEffect(() => {
+    if (!formOpen()) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFormOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  })
   // Unfiltered snapshot behind the scope/tag dropdowns: the options must not
   // shrink to whatever the active filter currently matches.
   const [allNotes, setAllNotes] = createSignal<Note[]>([])
@@ -850,6 +859,8 @@ export function NotesView() {
           height: 100%;
           box-sizing: border-box;
           padding: 8px 12px 6px;
+          /* Anchor for the create/edit form overlay. */
+          position: relative;
         }
         .notes-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
         .notes-title { display: flex; align-items: center; gap: 6px; font-weight: 550; }
@@ -1132,7 +1143,28 @@ export function NotesView() {
           border: 1px solid var(--v2-border-border-muted);
           border-radius: 4px;
           padding: 12px;
-          margin-bottom: 6px;
+          width: 100%;
+          max-width: 620px;
+          max-height: calc(100% - 28px);
+          overflow-y: auto;
+        }
+        /* Floating dialog: the create/edit form no longer pushes the list
+           down — it overlays it (dimmed backdrop) while the list keeps its
+           scroll and position behind. */
+        .form-overlay {
+          position: absolute;
+          inset: 0;
+          z-index: 5;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding: 14px;
+          overflow-y: auto;
+          background: color-mix(in srgb, rgb(0 0 0) 40%, transparent);
+          backdrop-filter: blur(2px);
+        }
+        .form-overlay .form {
+          box-shadow: 0 12px 44px rgb(0 0 0 / 0.5);
         }
         .form > label {
           display: flex;
@@ -1342,6 +1374,14 @@ export function NotesView() {
       </Show>
 
       <Show when={formOpen()}>
+        <section
+          class="form-overlay"
+          aria-label={form().mode === "add" ? "Nova nota" : "Editar nota"}
+          onClick={(e) => {
+            // Click on the dimmed backdrop (not the form itself) closes it.
+            if (e.target === e.currentTarget) setFormOpen(false)
+          }}
+        >
         <form class="form" onSubmit={(e) => { e.preventDefault(); void handleAddOrEdit() }}>
           <label>
             Título
@@ -1440,6 +1480,7 @@ export function NotesView() {
             </ctx.ui.Button>
           </div>
         </form>
+        </section>
       </Show>
 
       <div class="notes">
