@@ -26,15 +26,25 @@ import {
   tagsOf,
 } from "./filters"
 
+// `value` stays in English (it is the data written to the DB and read by the
+// notes tools); `label` is the pt-BR copy shown in the GUI.
 const CATEGORIES = [
-  { value: "problem", label: "problem" },
-  { value: "decision", label: "decision" },
-  { value: "config", label: "config" },
-  { value: "snippet", label: "snippet" },
-  { value: "architecture", label: "architecture" },
-  { value: "user", label: "user" },
-  { value: "general", label: "general" },
+  { value: "problem", label: "Problema" },
+  { value: "decision", label: "Decisão" },
+  { value: "config", label: "Configuração" },
+  { value: "snippet", label: "Trecho" },
+  { value: "architecture", label: "Arquitetura" },
+  { value: "user", label: "Usuário" },
+  { value: "general", label: "Geral" },
 ]
+
+/** pt-BR label for a stored category value; falls back to the raw value
+ * (covers categories created outside this list). */
+function categoryLabel(value: string): string {
+  return (
+    CATEGORIES.find((c) => c.value === value)?.label ?? value
+  )
+}
 
 type FormState = {
   mode: "add" | "edit"
@@ -74,6 +84,9 @@ type MultiSelectProps = {
   label: string
   placeholder: string
   options: string[]
+  // Optional display mapping (e.g. category value -> pt-BR label). Selections
+  // always store the raw option values; `display` only affects what is shown.
+  display?: (opt: string) => string
   // Live selection as a reactive accessor (not a snapshot array): this makes
   // checked={value().includes(opt)} a tracked getter that re-syncs the DOM
   // whenever the selection changes, instead of going stale.
@@ -91,6 +104,7 @@ type MultiSelectProps = {
 
 function MultiSelect(props: MultiSelectProps) {
   const { label, placeholder, options, value, onValueChange, openFilter, which, onOpenChange } = props
+  const show = (opt: string) => props.display?.(opt) ?? opt
   // Reactive open state (memo => a signal <Show> can track), driven by the
   // shared `openFilter` so only one combo is open at a time.
   const open = createMemo(() => openFilter() === which)
@@ -115,7 +129,17 @@ function MultiSelect(props: MultiSelectProps) {
   createEffect(() => {
     if (!open()) setSearch("")
   })
-  const visibleOptions = createMemo(() => filterByQuery(options, search()))
+  // Search matches both the raw value and the display text, so a translated
+  // label ("Problema") and its stored value ("problem") are both findable.
+  const visibleOptions = createMemo(() => {
+    const q = search().trim()
+    if (!q) return options
+    return options.filter(
+      (opt) =>
+        filterByQuery([opt], q).length > 0 ||
+        filterByQuery([show(opt)], q).length > 0,
+    )
+  })
 
   return (
     <div class="filter-cell">
@@ -134,7 +158,7 @@ function MultiSelect(props: MultiSelectProps) {
             <Show when={value().length > 0}>
               <span class="tags">
                 {value().slice(0, 2).map((opt) => (
-                  <span class="tag">{opt}</span>
+                  <span class="tag">{show(opt)}</span>
                 ))}
                 {value().length > 2 && (
                   <span class="tag tag-more">+{value().length - 2}</span>
@@ -199,7 +223,7 @@ function MultiSelect(props: MultiSelectProps) {
                 checked={value().includes(opt)}
                 onChange={(e) => toggle(opt, e.target.checked)}
               />
-              <span>{opt}</span>
+              <span>{show(opt)}</span>
             </label>
           ))}
         </div>
@@ -712,7 +736,7 @@ export function NotesView() {
       <div class="note-row">
         <button class="note-head" onClick={() => toggleNote(n.id)}>
           <span class="note-id">#{n.id}</span>
-          <span class="note-cat">{n.category}</span>
+          <span class="note-cat" title={n.category}>{categoryLabel(n.category)}</span>
           <span class="note-title" title={n.title}>
             {n.title}
           </span>
@@ -1286,6 +1310,7 @@ export function NotesView() {
             label="Categoria"
             placeholder="Todas as categorias"
             options={CATEGORIES.map((c) => c.value)}
+            display={categoryLabel}
             value={categoryFilter}
             onValueChange={setCategoryFilter}
             openFilter={openFilter}
