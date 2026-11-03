@@ -42,9 +42,11 @@ registrar notas.
 
 ## O que o plugin faz
 
-1. **Registra fatos duráveis** (`add`) com categoria, tags, autor e scope
-   por convenção (`Scope: global | project:<nome> | machine:<nome>` na
-   primeira linha do conteúdo). Notas `#problem` são validadas: sem
+1. **Registra fatos duráveis** (`add`) com categoria, tags, autor e scope por
+   campo: `scope` (`global`/`all` por padrão, `machine` ou `project`) e, quando
+   `scope` for `project`, o caminho absoluto em `project` (sem espaços). O
+   formato legado (`Scope:` na primeira linha do conteúdo ou `project:<nome>`
+   em `scope`) não é mais aceito. Notas `#problem` são validadas: sem
    Sintoma/Causa/Solução não são salvas.
 2. **Ciclo de confiança** — `confirm` re-verifica (a nota continua valendo),
    `dispute` marca como suspeita sem reescrever, `retract` esconde sem apagar;
@@ -85,7 +87,7 @@ StandardSchemaV1); cada tool retorna `{content, metadata}`.
 agentes: quando registrar (problemas resolvidos com Sintoma/Causa/Solução —
 obrigatório antes de fechar tarefa, decisões, configs, snippets), o ciclo de
 confiança (`confirm`/`dispute`/`retract`), o `update` como último recurso com
-histórico reversível, convenções (categorias, `Scope:`, tags, autor),
+histórico reversível, convenções (categorias, `scope` + `project`, tags, autor),
 backup do arquivo SQLite e a regra de escrever as notas em inglês. O
 `opencode-tools` expõe o skill via symlink
 `~/.config/opencode/skills/notes/SKILL.md` (o `setup.sh` faz o link a partir

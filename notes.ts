@@ -50,6 +50,7 @@ import {
   unpinNote,
   updateNote,
   viewNote,
+  parseScope,
 } from "./src/store.js";
 
 const CATEGORIES = [
@@ -63,6 +64,30 @@ const CATEGORIES = [
 ] as const;
 
 type ToolResult = { content: string; metadata?: Record<string, unknown> };
+
+/**
+ * A project-scoped note must carry a real project path. The legacy
+ * `project:<name>` free-form in `scope` is no longer accepted by the tools —
+ * the path lives in its own `project` field (absolute, no spaces). Returns a
+ * rejected result when the rule is violated, otherwise `null`.
+ */
+function requireProjectPath(args: {
+  scope?: string | undefined;
+  project?: string | undefined;
+}): ToolResult | null {
+  const type = args.scope ? parseScope(args.scope)?.type : undefined;
+  if (type !== "project") return null;
+  const project = args.project?.trim();
+  if (!project) {
+    return {
+      content:
+        "❌ scope='project' requires a non-empty 'project' path (absolute, no spaces).\n" +
+        "Use scope: 'project' and project: '/abs/path/to/project'.",
+      metadata: { rejected: true },
+    };
+  }
+  return null;
+}
 
 const ID_DESC = "Note id, shown as #NN by notes.search.";
 
@@ -111,8 +136,15 @@ const addInput = z.object({
     .string()
     .optional()
     .describe(
-      "How far the fact applies: 'global' (machine-independent, the default), " +
-        "'project:<name>' or 'machine:<name>'. One token, no spaces.",
+      "Scope type: 'all'/'global' (machine-independent, the default), " +
+        "'machine', or 'project'.",
+    ),
+  project: z
+    .string()
+    .optional()
+    .describe(
+      "Absolute project path (no spaces). Required when scope is 'project'. " +
+        "The legacy 'project:<name>' value in `scope` is no longer accepted.",
     ),
   author: z
     .string()
@@ -139,6 +171,10 @@ export const add = {
     const content = args.content ?? "";
     const tags = args.tags ?? "";
     const author = args.author?.trim() || undefined;
+    const project = args.project?.trim() || undefined;
+
+    const projErr = requireProjectPath({ scope: args.scope, project: args.project });
+    if (projErr) return projErr;
 
     if (category === "problem") {
       const missing = missingProblemSections(content);
@@ -161,7 +197,7 @@ export const add = {
     }
 
     const { db } = await requireStore();
-    const result = addNote(db, { category, title: args.title, content, tags, author, scope: args.scope });
+    const result = addNote(db, { category, title: args.title, content, tags, author, scope: args.scope, project });
     if (!result.ok) return fail(result.error);
     return { content: renderAdd(result), metadata: { category, author, exit: 0 } };
   },
@@ -183,8 +219,17 @@ const updateInput = z.object({
     .string()
     .optional()
     .describe(
-      "New scope: 'global', 'project:<name>' or 'machine:<name>' " +
-        "(empty string clears it).",
+      "New scope type: 'all'/'global', 'machine', or 'project'. " +
+        "(empty string clears it.)",
+    ),
+  project: z
+    .string()
+    .optional()
+    .describe(
+      "New absolute project path (no spaces). Required when scope is " +
+        "'project' (set it to change; to drop the project, set scope to " +
+        "'all'/'global'). The legacy 'project:<name>' value in `scope` is " +
+        "no longer accepted.",
     ),
 });
 type UpdateArgs = z.infer<typeof updateInput>;
@@ -208,15 +253,20 @@ export const update = {
       args.content === undefined &&
       args.tags === undefined &&
       args.category === undefined &&
-      args.scope === undefined
+      args.scope === undefined &&
+      args.project === undefined
     ) {
       return {
         content:
-          "❌ Nothing to update. Pass at least one of title/content/tags/category/scope.\n" +
+          "❌ Nothing to update. Pass at least one of " +
+          "title/content/tags/category/scope/project.\n" +
           "If the goal is to record new information, use notes.add instead.",
         metadata: { rejected: true },
       };
     }
+
+    const projErr = requireProjectPath({ scope: args.scope, project: args.project });
+    if (projErr) return projErr;
 
     if (args.title !== undefined && !args.title.trim()) {
       return { content: "❌ empty title.", metadata: { rejected: true } };
@@ -245,6 +295,7 @@ export const update = {
       content: args.content,
       category: args.category,
       scope: args.scope,
+      project: args.project?.trim() || undefined,
     });
     if (!result.ok) return fail(result.error);
     return { content: renderUpdate(result), metadata: { id: args.id, exit: 0 } };
