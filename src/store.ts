@@ -177,6 +177,34 @@ const MIGRATION_007 = [
   `UPDATE note_revisions SET category = substr(category, 2) WHERE category LIKE '#%'`,
 ]
 
+/*
+ * v8 — the meaning of `scope` changes: it becomes a type (`all`, `machine`,
+ * `project`) and the new `project` column carries the absolute project path
+ * (used only for project-scope notes). Legacy rows are rewritten in place:
+ *
+ *   null / `global`            -> scope = 'all'
+ *   `machine` / `machine:X`    -> scope = 'machine'   (X is dropped)
+ *   `project:X`                -> scope = 'project', project = X
+ *
+ * Order matters: the project path is copied from the legacy `project:X`
+ * values *before* the type column is rewritten. Runs in a single transaction
+ * (see initSchema) so the database never ends up half-migrated.
+ */
+const MIGRATION_008 = [
+  `ALTER TABLE notes ADD COLUMN project TEXT`,
+  `ALTER TABLE note_revisions ADD COLUMN project TEXT`,
+  `UPDATE notes SET project = substr(scope, 9) WHERE scope LIKE 'project:%'`,
+  `UPDATE note_revisions SET project = substr(scope, 9) WHERE scope LIKE 'project:%'`,
+  `UPDATE notes SET project = NULL, scope = 'machine' WHERE scope = 'machine' OR scope LIKE 'machine:%'`,
+  `UPDATE note_revisions SET project = NULL, scope = 'machine' WHERE scope = 'machine' OR scope LIKE 'machine:%'`,
+  `UPDATE notes SET scope = 'project' WHERE scope = 'project' OR scope LIKE 'project:%'`,
+  `UPDATE note_revisions SET scope = 'project' WHERE scope = 'project' OR scope LIKE 'project:%'`,
+  `UPDATE notes SET scope = 'all' WHERE scope IS NULL OR scope = 'global'`,
+  `UPDATE note_revisions SET scope = 'all' WHERE scope IS NULL OR scope = 'global'`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_scope_project ON notes(scope, project)`,
+  `DROP INDEX IF EXISTS idx_notes_scope`,
+]
+
 const FTS_SCHEMA = [
   `CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     title, content, tags, category,
@@ -198,7 +226,7 @@ const FTS_SCHEMA = [
   END`,
 ]
 
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 /* ------------------------------------------------------------------ */
 /* Schema init / migrations                                            */
@@ -222,18 +250,47 @@ function apply(db: Db, statements: readonly string[]): void {
 /* Scope                                                               */
 /* ------------------------------------------------------------------ */
 
+export type ScopeType = "all" | "machine" | "project"
+
 const SCOPE_LINE = /^\s*Scope:\s*(\S+)\s*$/
 
-/** Normalizes a scope to a single token: `global`, `project:<name>`, `machine:<name>`. */
-export function normalizeScope(value?: string | null): string | null {
-  const token = (value ?? "").trim().split(/\s+/)[0] ?? ""
-  return token || null
+const SCOPE_TYPE_ALIASES: Record<string, ScopeType> = {
+  all: "all",
+  global: "all",
+  none: "all",
+  machine: "machine",
+  project: "project",
 }
 
-/** The scope declared in the body by the old convention, if any. */
+/**
+ * Parses a free-form scope value into its type and, when the type is
+ * `project`, the project value that follows `<name>` (legacy `project:X`).
+ * `global`/`all`/`none` -> type `all`; `machine:X` -> type `machine` (X is
+ * dropped); `project:X` -> type `project` with project `X`. Unknown tokens
+ * yield `null`.
+ */
+export function parseScope(
+  value?: string | null
+): { type: ScopeType; project: string | null } | null {
+  const token = (value ?? "").trim().split(/\s+/)[0] ?? ""
+  if (!token) return null
+  const [typeRaw, ...rest] = token.split(":")
+  const type = SCOPE_TYPE_ALIASES[typeRaw?.toLowerCase() ?? ""]
+  if (!type) return null
+  if (type !== "project") return { type, project: null }
+  const project = rest.length ? rest.join(":").trim() : ""
+  return { type, project: project || null }
+}
+
+/** Normalizes a scope to its type column value: `all`/`machine`/`project` (null when absent). */
+export function normalizeScope(value?: string | null): ScopeType | null {
+  return parseScope(value)?.type ?? null
+}
+
+/** The raw value declared in the body by the legacy `Scope:` convention, if any. */
 export function scopeFromContent(content: string): string | null {
   const match = content.match(/^\s*Scope:\s*(\S+)/m)
-  return match?.[1] ? normalizeScope(match[1]) : null
+  return match?.[1] ?? null
 }
 
 /** Removes the legacy `Scope: …` line from a body. */
@@ -245,18 +302,18 @@ export function stripScopeLine(content: string): string {
     .trimEnd()
 }
 
-/** Lifts the body convention into the new `scope` column, once. */
+/** Lifts the body convention into the new scope columns, once. */
 function backfillScopeColumn(db: Db): void {
   for (const table of ["notes", "note_revisions"] as const) {
     const rows = db
       .prepare(`SELECT id, content FROM ${table} WHERE scope IS NULL`)
       .all() as Array<{ id: number; content: string }>
     if (rows.length === 0) continue
-    const update = db.prepare(`UPDATE ${table} SET scope = ?, content = ? WHERE id = ?`)
+    const update = db.prepare(`UPDATE ${table} SET scope = ?, project = ?, content = ? WHERE id = ?`)
     for (const row of rows) {
-      const scope = scopeFromContent(row.content)
-      if (!scope) continue
-      update.run(scope, stripScopeLine(row.content), row.id)
+      const parsed = parseScope(scopeFromContent(row.content))
+      if (!parsed) continue
+      update.run(parsed.type, parsed.project, stripScopeLine(row.content), row.id)
     }
   }
 }
@@ -273,6 +330,22 @@ export function initSchema(db: Db): void {
   if (current < 5) apply(db, MIGRATION_005)
   if (current < 6) apply(db, MIGRATION_006)
   if (current < 7) apply(db, MIGRATION_007)
+  // v8 rewrites the meaning of `scope` and adds `project`; run as one
+  // transaction so a failure never leaves the database half-migrated.
+  if (current < 8) {
+    try {
+      db.prepare("BEGIN").run()
+      apply(db, MIGRATION_008)
+      db.prepare("COMMIT").run()
+    } catch (err) {
+      try {
+        db.prepare("ROLLBACK").run()
+      } catch {
+        /* best effort */
+      }
+      throw err
+    }
+  }
   // Unconditional: every note written before the column existed is lifted
   // from its legacy `Scope:` body line on first boot after the update.
   backfillScopeColumn(db)
@@ -351,6 +424,7 @@ export type NoteRow = {
   category: string
   tags: string | null
   scope: string | null
+  project: string | null
   title: string
   content: string
   author: string | null
@@ -368,6 +442,7 @@ export type RevisionRow = {
   category: string
   tags: string | null
   scope: string | null
+  project: string | null
   title: string
   content: string
   verified_at: string | null
@@ -377,7 +452,7 @@ export type RevisionRow = {
 }
 
 export const NOTE_FIELDS = [
-  "id", "timestamp", "category", "tags", "scope", "title", "content",
+  "id", "timestamp", "category", "tags", "scope", "project", "title", "content",
   "author", "verified_at", "disputed_at", "retracted_at", "status_reason", "pinned",
 ] as const
 
@@ -488,7 +563,7 @@ export function noteHistory(db: Db, id: number, limit?: number): History | undef
   const note = loadNote(db, id)
   if (!note) return undefined
   let sql =
-    "SELECT id, revised_at, timestamp, category, tags, scope, title, content," +
+    "SELECT id, revised_at, timestamp, category, tags, scope, project, title, content," +
     " verified_at, disputed_at, retracted_at, status_reason" +
     " FROM note_revisions WHERE note_id = ? ORDER BY id DESC"
   const params: unknown[] = [id]
@@ -525,12 +600,20 @@ export type AddInput = {
   tags?: string | undefined
   author?: string | undefined
   scope?: string | undefined
+  project?: string | undefined
 }
 
 export function addNote(db: Db, input: AddInput): AddOk | WriteError {
   const category = normalizeCategory(input.category)
   const title = input.title
-  const scope = normalizeScope(input.scope)
+  const parsed = parseScope(input.scope)
+  // No default scope: the GUI always picks one of all/machine/project;
+  // free callers fall back to "applies everywhere".
+  const scope = parsed?.type ?? "all"
+  const project =
+    scope === "project"
+      ? (input.project && input.project.trim() ? input.project.trim() : parsed?.project ?? null)
+      : null
   const content = input.content ?? ""
   if (!title.trim()) return { ok: false, error: "título vazio: a nota ficaria sem identificação." }
   if (category === "problem") {
@@ -540,13 +623,14 @@ export function addNote(db: Db, input: AddInput): AddOk | WriteError {
   const timestamp = nowTimestamp()
   const info = db
     .prepare(
-      "INSERT INTO notes (timestamp, category, tags, scope, title, content, author) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO notes (timestamp, category, tags, scope, project, title, content, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .run(
       timestamp,
       category,
       input.tags ?? "",
       scope,
+      project,
       title,
       content,
       input.author && input.author.trim() ? input.author.trim() : null
@@ -563,6 +647,7 @@ export type UpdateInput = {
   content?: string | undefined
   category?: string | undefined
   scope?: string | undefined
+  project?: string | undefined
 }
 
 export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
@@ -571,7 +656,8 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
     input.tags === undefined &&
     input.content === undefined &&
     input.category === undefined &&
-    input.scope === undefined
+    input.scope === undefined &&
+    input.project === undefined
   ) {
     return { ok: false, error: "update requer ao menos um campo" }
   }
@@ -582,21 +668,32 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
   const newTags = input.tags !== undefined ? input.tags : old.tags
   const newTitle = input.title !== undefined ? input.title : old.title
   const newContent = input.content !== undefined ? input.content : old.content
-  const newScope = input.scope !== undefined ? normalizeScope(input.scope) : old.scope
+
+  // (scope, project) are a pair: a change to either re-resolves both. The
+  // project path is only meaningful for project scope and is never copied
+  // over to another type.
+  const parsed = parseScope(input.scope)
+  const newScope = input.scope !== undefined ? (parsed?.type ?? old.scope) : old.scope
+  const newProject: string | null =
+    input.scope !== undefined || input.project !== undefined
+      ? newScope === "project"
+        ? (input.project && input.project.trim() ? input.project.trim() : parsed?.project ?? null)
+        : null
+      : old.project
 
   if (!newTitle.trim()) return { ok: false, error: "título vazio: a nota ficaria sem identificação." }
-  if (newCategory === "#problem") {
+  if (newCategory === "problem") {
     const missing = missingProblemSections(newContent)
-    if (missing.length) return { ok: false, error: `#problem sem ${missing.join(", ")}.` }
+    if (missing.length) return { ok: false, error: `problem sem ${missing.join(", ")}.` }
   }
 
   const timestamp = nowTimestamp()
   // Correção sem perda: snapshot do estado anterior ANTES de sobrescrever.
   const rev = db
     .prepare(
-      "INSERT INTO note_revisions (note_id, revised_at, timestamp, category, tags, scope, title, content," +
+      "INSERT INTO note_revisions (note_id, revised_at, timestamp, category, tags, scope, project, title, content," +
         " verified_at, disputed_at, retracted_at, status_reason) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .run(
       input.id,
@@ -605,6 +702,7 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
       old.category,
       old.tags,
       old.scope,
+      old.project,
       old.title,
       old.content,
       old.verified_at,
@@ -613,9 +711,9 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
       old.status_reason
     )
   db.prepare(
-    "UPDATE notes SET timestamp = ?, category = ?, tags = ?, scope = ?, title = ?, content = ?," +
+    "UPDATE notes SET timestamp = ?, category = ?, tags = ?, scope = ?, project = ?, title = ?, content = ?," +
       " verified_at = ?, disputed_at = NULL, retracted_at = NULL, status_reason = NULL WHERE id = ?"
-  ).run(timestamp, newCategory, newTags, newScope, newTitle, newContent, timestamp, input.id)
+  ).run(timestamp, newCategory, newTags, newScope, newProject, newTitle, newContent, timestamp, input.id)
 
   const note = loadNote(db, input.id)
   if (!note) return { ok: false, error: `nota ${input.id} não encontrada após atualização` }
@@ -631,10 +729,18 @@ export function updateNote(db: Db, input: UpdateInput): UpdateOk | WriteError {
 export function restoreNote(db: Db, id: number, revisionId: number): RestoreOk | WriteError {
   const rev = db
     .prepare(
-      "SELECT revised_at, category, tags, scope, title, content FROM note_revisions WHERE id = ? AND note_id = ?"
+      "SELECT revised_at, category, tags, scope, project, title, content FROM note_revisions WHERE id = ? AND note_id = ?"
     )
     .get(revisionId, id) as
-    | { revised_at: string; category: string; tags: string | null; scope: string | null; title: string; content: string }
+    | {
+        revised_at: string
+        category: string
+        tags: string | null
+        scope: string | null
+        project: string | null
+        title: string
+        content: string
+      }
     | null
   if (!rev) {
     return { ok: false, error: `revisão #${revisionId} não encontrada para a nota ${id}.` }
@@ -647,6 +753,7 @@ export function restoreNote(db: Db, id: number, revisionId: number): RestoreOk |
     content: rev.content,
     category: rev.category,
     scope: rev.scope ?? "",
+    project: rev.project ?? undefined,
   })
   if (!result.ok) return result
   return { ...result, revisionIdFrom: revisionId, revisedAt: rev.revised_at }
@@ -767,7 +874,9 @@ export function renderRows(header: string, rows: NoteRow[]): string {
     const flags = flagsOf(r)
     if (flags.length) out.push("   " + flags.join(" · "))
     if (r.tags) out.push(`Tags: ${r.tags}`)
-    if (r.scope) out.push(`Scope: ${r.scope}`)
+    if (r.scope && r.scope !== "all") {
+      out.push(`Scope: ${r.scope}${r.project ? ` (${r.project})` : ""}`)
+    }
     out.push(`Conteúdo:\n${r.content}\n${DASH}`)
   }
   return out.join("\n")
@@ -781,7 +890,9 @@ export function renderRevision(rev: RevisionRow): string {
   const flags = flagsOf(rev)
   if (flags.length) out.push("   " + flags.join(" · "))
   if (rev.tags) out.push(`Tags: ${rev.tags}`)
-  if (rev.scope) out.push(`Scope: ${rev.scope}`)
+  if (rev.scope && rev.scope !== "all") {
+    out.push(`Scope: ${rev.scope}${rev.project ? ` (${rev.project})` : ""}`)
+  }
   out.push(`Conteúdo:\n${rev.content}`)
   return out.join("\n")
 }

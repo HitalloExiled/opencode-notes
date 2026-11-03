@@ -21,6 +21,8 @@ import {
   applyFilters,
   filterByQuery,
   pruneSelection,
+  scopeLabel,
+  scopeOf,
   tagsOf,
 } from "./filters"
 
@@ -42,7 +44,9 @@ type FormState = {
   content: string
   tags: string
   author: string
-  scope: string
+  scope: "all" | "machine" | "project"
+  /** Absolute project path; only used when `scope` is `"project"`. */
+  project: string
 }
 
 const defaultForm: FormState = {
@@ -52,7 +56,8 @@ const defaultForm: FormState = {
   content: "",
   tags: "",
   author: "",
-  scope: "",
+  scope: "all",
+  project: "",
 }
 
 /* ------------------------------------------------------------------ */
@@ -242,6 +247,28 @@ export function NotesView() {
   const [resNotes, setResNotes] = createSignal<Note[]>([])
   const [page, setPage] = createSignal(0)
 
+  // OS user for the read-only "Autor" field: resolved once via IPC and
+  // pre-filled when a new note is created.
+  const [whoami, setWhoami] = createSignal("")
+  createEffect(() => {
+    if (whoami()) return
+    void api
+      .whoami()
+      .then((u) => {
+        if (!whoami()) setWhoami(u)
+      })
+      .catch(() => {
+        /* leave empty; the form still works with a blank author */
+      })
+  })
+
+  // The current session's project path, used to auto-fill the form's
+  // "Projeto" field when the scope is `project`.
+  const currentProjectPath = (): string => {
+    const session = ctx.sessions.current()
+    return session?.project?.worktree ?? session?.directory ?? ""
+  }
+
   const locale = () => ctx.locale.locale()
 
   // Toggle a combo open/closed (switching to another simply re-targets the
@@ -287,7 +314,7 @@ export function NotesView() {
       // reading these signals would re-run `loadNotes` and loop forever.
       const arraysSame = (a: readonly string[], b: readonly string[]): boolean =>
         a.length === b.length && a.every((v, i) => v === b[i])
-      const nextScope = scope.filter((s) => all.some((n) => (n.scope ?? "") === s))
+      const nextScope = scope.filter((s) => all.some((n) => scopeOf(n) === s))
       const nextTag = tag.filter((t) => all.some((n) => tagsOf(n).includes(t)))
       if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
       if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
@@ -318,7 +345,7 @@ export function NotesView() {
   // Keep the multi-select filters pointing only at values that still exist,
   // so deleting a note can't leave a phantom selection. Cheap: no fetch.
   createEffect(() => {
-    const existsScope = (s: string) => allNotes().some((n) => (n.scope ?? "") === s)
+    const existsScope = (s: string) => allNotes().some((n) => scopeOf(n) === s)
     const existsTag = (t: string) => allNotes().some((n) => tagsOf(n).includes(t))
     const nextScope = pruneSelection(scopeFilter(), existsScope)
     const nextTag = pruneSelection(tagFilter(), existsTag)
@@ -333,11 +360,11 @@ export function NotesView() {
   })
 
   // Filter choices come from the unfiltered snapshot, so picking one scope or
-  // tag never removes the others from the dropdown.
+  // tag never removes the others from the dropdown. The key is the type
+  // ("all" / "machine") or the absolute project path — so notes in the same
+  // project group under a single option.
   const scopeOptions = createMemo(() =>
-    [...new Set(allNotes().map((n) => n.scope ?? "").filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b)
-    )
+    [...new Set(allNotes().map(scopeOf))].sort((a, b) => a.localeCompare(b))
   )
   const tagOptions = createMemo(() =>
     [...new Set(allNotes().flatMap(tagsOf))].sort((a, b) => a.localeCompare(b))
@@ -398,7 +425,9 @@ export function NotesView() {
       return
     }
     const content = f.content.trim()
-    const scope = f.scope.trim() || undefined
+    // (scope, project) are a pair: the path only travels with project scope.
+    const project =
+      f.scope === "project" && f.project.trim() ? f.project.trim() : undefined
     setSaving(true)
     try {
       const res =
@@ -409,7 +438,8 @@ export function NotesView() {
               content,
               tags: f.tags.trim() || undefined,
               author: f.author.trim() || undefined,
-              scope,
+              scope: f.scope,
+              project,
             })
           : await api.update({
               id: f.id as number,
@@ -417,8 +447,8 @@ export function NotesView() {
               content,
               tags: f.tags.trim() || undefined,
               category: f.category,
-              // An explicit empty string clears the scope.
-              scope: f.scope.trim(),
+              scope: f.scope,
+              project,
             })
       if (res.ok) {
         setFormOpen(false)
@@ -435,8 +465,23 @@ export function NotesView() {
     }
   }
 
-  const openAdd = () => {
-    setForm({ ...defaultForm })
+  // Resolves the OS user (cached from the signal above, fetched if still
+  // pending) and opens the form with it as the read-only author.
+  const openAdd = async () => {
+    let author = whoami()
+    if (!author) {
+      try {
+        author = await api.whoami()
+      } catch {
+        author = ""
+      }
+      setWhoami(author)
+    }
+    setForm({
+      ...defaultForm,
+      author,
+      project: currentProjectPath(),
+    })
     setFormOpen(true)
   }
 
@@ -449,7 +494,8 @@ export function NotesView() {
       content: n.content,
       tags: n.tags || "",
       author: n.author || "",
-      scope: n.scope ?? "",
+      scope: n.scope ? (n.scope as FormState["scope"]) : "all",
+      project: n.project || "",
     })
     setFormOpen(true)
   }
@@ -567,8 +613,10 @@ export function NotesView() {
           ? "verified"
           : ""
     const meta = [
-      String(n.category).replace(/^#/, ""),
-      n.scope ? `scope: ${n.scope}` : "",
+      String(n.category),
+      n.scope && n.scope !== "all"
+        ? `scope: ${n.scope}${n.project ? ` (${n.project})` : ""}`
+        : "",
       n.tags ? `tags: ${n.tags}` : "",
       n.author ? `author: ${n.author}` : "",
       formatTime(n.timestamp),
@@ -669,9 +717,12 @@ export function NotesView() {
             {n.title}
           </span>
           {tagChips(n, 2)}
-          <Show when={n.scope}>
-            <span class="tag tag-scope" title={`Escopo: ${n.scope}`}>
-              {n.scope}
+          <Show when={scopeLabel(n)}>
+            <span
+              class="tag tag-scope"
+              title={n.scope === "project" ? n.project || "project" : n.scope ?? "all"}
+            >
+              {scopeLabel(n)}
             </span>
           </Show>
           {trustBadges(n)}
@@ -694,8 +745,10 @@ export function NotesView() {
             <Show when={n.author}>
               <span>por {n.author}</span>
             </Show>
-            <Show when={n.scope}>
-              <span class="tag tag-scope">escopo: {n.scope}</span>
+            <Show when={scopeLabel(n)}>
+              <span class="tag tag-scope">
+                escopo: {scopeLabel(n)}{n.scope === "project" && n.project ? ` · ${n.project}` : ""}
+              </span>
             </Show>
             {tagChips(n)}
           </div>
@@ -1098,6 +1151,32 @@ export function NotesView() {
           outline-offset: 0;
           background: var(--v2-background-bg-layer-02);
         }
+        /* Side-by-side row: categoria + escopo. */
+        .form-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        .form-grid > label {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          font-size: 12px;
+          font-weight: 550;
+          color: var(--v2-text-text-muted);
+        }
+        /* Read-only author field: styled like the other inputs, auto-filled
+           from the OS user (whoami) and not editable. */
+        .form-author {
+          border: 1px solid var(--v2-border-border-muted);
+          border-radius: 4px;
+          background: var(--v2-background-bg-layer-02);
+          color: var(--v2-text-text-faint);
+          font: inherit;
+          padding: 4px 6px;
+          cursor: default;
+          user-select: all;
+        }
         .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
         .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 4px 6px; }
         .page-label { font-size: 11.5px; color: var(--v2-text-text-faint); }
@@ -1240,17 +1319,6 @@ export function NotesView() {
       <Show when={formOpen()}>
         <form class="form" onSubmit={(e) => { e.preventDefault(); void handleAddOrEdit() }}>
           <label>
-            Categoria
-            <select
-              value={form().category}
-              onChange={(e) => setForm((s) => ({ ...s, category: e.currentTarget.value }))}
-            >
-              {CATEGORIES.map((c) => (
-                <option value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
             Título
             <ctx.ui.TextInput
               label="Título"
@@ -1268,30 +1336,69 @@ export function NotesView() {
             />
           </label>
           <label>
+            Autor
+            <input
+              type="text"
+              class="form-author"
+              readOnly
+              value={form().author}
+              placeholder="auto — quem registrou"
+            />
+          </label>
+          <div class="form-grid">
+            <label>
+              Categoria
+              <select
+                value={form().category}
+                onChange={(e) => setForm((s) => ({ ...s, category: e.currentTarget.value }))}
+              >
+                {CATEGORIES.map((c) => (
+                  <option value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Escopo
+              <select
+                value={form().scope}
+                onChange={(e) => {
+                  const scope = e.currentTarget.value as FormState["scope"]
+                  // When switching to `project`, fill in the current session's
+                  // path if the field is still empty.
+                  setForm((s) => ({
+                    ...s,
+                    scope,
+                    project:
+                      scope === "project" && !s.project.trim()
+                        ? currentProjectPath()
+                        : s.project,
+                  }))
+                }}
+              >
+                <option value="all">Global</option>
+                <option value="machine">Máquina</option>
+                <option value="project">Projeto</option>
+              </select>
+            </label>
+          </div>
+          <Show when={form().scope === "project"}>
+            <label>
+              Projeto
+              <ctx.ui.TextInput
+                label="Projeto"
+                placeholder="caminho absoluto do projeto"
+                value={form().project}
+                onInput={(v) => setForm((s) => ({ ...s, project: v }))}
+              />
+            </label>
+          </Show>
+          <label>
             Tags
             <ctx.ui.TextInput
               label="Tags"
               placeholder="palavras-chave separadas por espaço"
               value={form().tags}
               onInput={(v) => setForm((s) => ({ ...s, tags: v }))}
-            />
-          </label>
-          <label>
-            Escopo
-            <ctx.ui.TextInput
-              label="Escopo"
-              placeholder="global, project:<nome> ou machine:<nome>"
-              value={form().scope}
-              onInput={(v) => setForm((s) => ({ ...s, scope: v }))}
-            />
-          </label>
-          <label>
-            Autor
-            <ctx.ui.TextInput
-              label="Autor"
-              placeholder="quem registrou (opcional)"
-              value={form().author}
-              onInput={(v) => setForm((s) => ({ ...s, author: v }))}
             />
           </label>
           <div class="form-actions">

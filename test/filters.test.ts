@@ -16,6 +16,8 @@ import {
   displayOf,
   filterByQuery,
   pruneSelection,
+  scopeLabel,
+  scopeOf,
   tagsOf,
 } from "../src/gui/filters";
 
@@ -52,23 +54,102 @@ describe("tagsOf", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* scopeOf / scopeLabel                                                 */
+/* ------------------------------------------------------------------ */
+
+describe("scopeOf", () => {
+  test("no scope / 'all' -> 'all'", () => {
+    expect(scopeOf(note({ scope: undefined }))).toBe("all");
+    expect(scopeOf(note({ scope: "all" }))).toBe("all");
+  });
+
+  test("'machine' -> 'machine'", () => {
+    expect(scopeOf(note({ scope: "machine" }))).toBe("machine");
+  });
+
+  test("'project' with a path -> the path", () => {
+    expect(scopeOf(note({ scope: "project", project: "/a/b/c" }))).toBe("/a/b/c");
+  });
+
+  test("'project' without a path -> 'project' fallback", () => {
+    expect(scopeOf(note({ scope: "project" }))).toBe("project");
+  });
+});
+
+describe("scopeLabel", () => {
+  test("'all' / no scope -> no chip (empty label)", () => {
+    expect(scopeLabel(note({ scope: undefined }))).toBe("");
+    expect(scopeLabel(note({ scope: "all" }))).toBe("");
+  });
+
+  test("'machine' -> 'machine'", () => {
+    expect(scopeLabel(note({ scope: "machine" }))).toBe("machine");
+  });
+
+  test("'project' -> basename of the path (full path via title)", () => {
+    expect(scopeLabel(note({ scope: "project", project: "/home/user/dev/app" }))).toBe(
+      "app",
+    );
+    expect(scopeLabel(note({ scope: "project", project: "/a/b" }))).toBe("b");
+  });
+
+  test("'project' without a path -> 'project'", () => {
+    expect(scopeLabel(note({ scope: "project" }))).toBe("project");
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* applyFilters — scope / tag / pinned (all notes non-retracted)        */
 /* ------------------------------------------------------------------ */
 
-// Categories are distributed across the fixture so the category predicate can
-// be exercised against the same notes scope/tag tests use.
+// Scope keys in the fixture:
+//   1,3 -> "/home/user/dev/agentic-dev-infra"  (same project, two notes)
+//   2   -> "/srv/apps/opencode-tools"
+//   4   -> "machine"
+//   5   -> "all"
+//   6   -> undefined -> "all"
+//   7   -> "project" without a path -> "project"
 const base: Note[] = [
-  note({ id: 1, scope: "project:a", tags: "x y", category: "problem" }),
-  note({ id: 2, scope: "project:b", tags: "z", category: "decision" }),
-  note({ id: 3, pinned: true, scope: "project:a", tags: "y", category: "config" }),
-  note({ id: 4, scope: "global", tags: "w", category: "problem" }),
+  note({
+    id: 1,
+    scope: "project",
+    project: "/home/user/dev/agentic-dev-infra",
+    tags: "x y",
+    category: "problem",
+  }),
+  note({
+    id: 2,
+    scope: "project",
+    project: "/srv/apps/opencode-tools",
+    tags: "z",
+    category: "decision",
+  }),
+  note({
+    id: 3,
+    pinned: true,
+    scope: "project",
+    project: "/home/user/dev/agentic-dev-infra",
+    tags: "y z3",
+    category: "config",
+  }),
+  note({ id: 4, scope: "machine", tags: "w", category: "problem" }),
+  note({ id: 5, scope: "all", tags: "e", category: "snippet" }),
+  note({ id: 6, scope: undefined, tags: "n", category: "problem" }),
+  note({ id: 7, scope: "project", tags: "p", category: "problem" }),
 ];
 
-const ALL = base.map((n) => n.id); // [1, 2, 3, 4]
+const ALL = base.map((n) => n.id); // [1..7]
+const INFRA = "/home/user/dev/agentic-dev-infra";
+const TOOLS = "/srv/apps/opencode-tools";
 
 // ids returned when filtering `base` by the given chips (retracted hidden,
 // the default main-list state). Keeps assertions flat and readable.
-function idsOf(p: { scope?: string[]; tag?: string[]; category?: string[]; pinnedOnly?: boolean }) {
+function idsOf(p: {
+  scope?: string[];
+  tag?: string[];
+  category?: string[];
+  pinnedOnly?: boolean;
+}) {
   return applyFilters(base, {
     scope: p.scope ?? [],
     tag: p.tag ?? [],
@@ -85,12 +166,17 @@ describe("applyFilters (scope / tag / category / pinned)", () => {
 
   test("scope: empty -> all, specific -> matching only", () => {
     expect(idsOf({ scope: [] })).toEqual(ALL);
-    expect(idsOf({ scope: ["project:a"] })).toEqual([1, 3]);
-    expect(idsOf({ scope: ["global"] })).toEqual([4]);
+    expect(idsOf({ scope: ["machine"] })).toEqual([4]);
+    expect(idsOf({ scope: ["all"] })).toEqual([5, 6]);
+    // two notes in the same project group under one option
+    expect(idsOf({ scope: [INFRA] })).toEqual([1, 3]);
+    expect(idsOf({ scope: [TOOLS] })).toEqual([2]);
     // multi-select: union
-    expect(idsOf({ scope: ["project:a", "global"] })).toEqual([1, 3, 4]);
-    // an unknown scope matches nothing for that value, keeps the rest
-    expect(idsOf({ scope: ["project:a", "nonexistent"] })).toEqual([1, 3]);
+    expect(idsOf({ scope: [INFRA, "machine", "all"] })).toEqual([1, 3, 4, 5, 6]);
+    // the 'project'-without-path fallback is its own option
+    expect(idsOf({ scope: ["project"] })).toEqual([7]);
+    // an unknown key matches nothing for that value, keeps the rest
+    expect(idsOf({ scope: [INFRA, "nonexistent"] })).toEqual([1, 3]);
   });
 
   test("tag: empty -> all, specific -> notes carrying any of them", () => {
@@ -106,12 +192,13 @@ describe("applyFilters (scope / tag / category / pinned)", () => {
   });
 
   test("scope + tag combine (AND)", () => {
-    expect(idsOf({ scope: ["project:a"], tag: ["y"] })).toEqual([1, 3]);
-    expect(idsOf({ scope: ["project:a"], tag: ["x"] })).toEqual([1]);
+    expect(idsOf({ scope: [INFRA], tag: ["y"] })).toEqual([1, 3]);
+    expect(idsOf({ scope: [INFRA], tag: ["x"] })).toEqual([1]);
+    expect(idsOf({ scope: [INFRA], tag: ["z3"] })).toEqual([3]);
   });
 
   test("deselecting a scope (selection -> []) returns the full list", () => {
-    expect(idsOf({ scope: ["project:a"] })).toEqual([1, 3]); // narrows while selected
+    expect(idsOf({ scope: [INFRA] })).toEqual([1, 3]); // narrows while selected
     expect(idsOf({ scope: [] })).toEqual(ALL); // back to full when deselected
   });
 
@@ -122,27 +209,27 @@ describe("applyFilters (scope / tag / category / pinned)", () => {
 
   test("category: empty -> all, specific -> matching only", () => {
     expect(idsOf({ category: [] })).toEqual(ALL);
-    expect(idsOf({ category: ["problem"] })).toEqual([1, 4]);
+    expect(idsOf({ category: ["problem"] })).toEqual([1, 4, 6, 7]);
     expect(idsOf({ category: ["decision", "config"] })).toEqual([2, 3]);
     // an unknown category matches nothing for that value, keeps the rest
     expect(idsOf({ category: ["decision", "nonexistent"] })).toEqual([2]);
   });
 
   test("category + scope combine (AND)", () => {
-    expect(idsOf({ scope: ["project:a"], category: ["problem"] })).toEqual([1]);
-    expect(idsOf({ scope: ["project:a"], category: ["config"] })).toEqual([3]);
-    expect(idsOf({ scope: ["global"], category: ["problem"] })).toEqual([4]);
+    expect(idsOf({ scope: [INFRA], category: ["problem"] })).toEqual([1]);
+    expect(idsOf({ scope: [INFRA], category: ["config"] })).toEqual([3]);
+    expect(idsOf({ scope: ["machine"], category: ["problem"] })).toEqual([4]);
     // all three combine (AND)
-    expect(idsOf({ scope: ["project:a"], tag: ["x"], category: ["problem"] })).toEqual([1]);
+    expect(idsOf({ scope: [INFRA], tag: ["x"], category: ["problem"] })).toEqual([1]);
   });
 
   test("deselecting a category (selection -> []) returns the full list", () => {
-    expect(idsOf({ category: ["problem"] })).toEqual([1, 4]); // narrows while selected
-    expect(idsOf({ category: [] })).toEqual(ALL); // back to full when deselected
+    expect(idsOf({ category: ["problem"] })).toEqual([1, 4, 6, 7]);
+    expect(idsOf({ category: [] })).toEqual(ALL);
   });
 
   test("order is preserved (stable filter)", () => {
-    expect(idsOf({ scope: ["project:a", "global"] })).toEqual([1, 3, 4]);
+    expect(idsOf({ scope: [TOOLS, "machine", "all"] })).toEqual([2, 4, 5, 6]);
   });
 });
 
@@ -152,8 +239,8 @@ describe("applyFilters (scope / tag / category / pinned)", () => {
 /* ------------------------------------------------------------------ */
 
 const withRetracted: Note[] = [
-  note({ id: 1, scope: "global", tags: "a" }),
-  note({ id: 2, scope: "global", tags: "b", retractedAt: "2020-01-01T00:00:00Z" }),
+  note({ id: 1, scope: "all", tags: "a" }),
+  note({ id: 2, scope: "machine", tags: "b", retractedAt: "2020-01-01T00:00:00Z" }),
 ];
 
 describe("applyFilters (retracted)", () => {

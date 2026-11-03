@@ -55,10 +55,37 @@ export function applyFilters(
         : n.retractedAt === undefined
   )
   if (pinnedOnly) out = out.filter((n) => n.pinned)
-  if (scope.length) out = out.filter((n) => scope.includes(n.scope ?? ""))
+  if (scope.length) out = out.filter((n) => scope.includes(scopeOf(n)))
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
   if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))
   return out
+}
+
+/**
+ * The filter key a note belongs to: `"all"` / `"machine"` / the absolute
+ * project path (for project-scoped notes, falling back to `"project"` when
+ * the path is empty). Two notes in the same project compare equal on the
+ * key, which is what makes the multi-select scope filter group by project.
+ */
+export function scopeOf(note: Note): string {
+  const s = note.scope
+  if (s === "project") return note.project ?? "project"
+  return s ?? "all"
+}
+
+/**
+ * Short display label for a note's scope chip. Returns `""` for the default
+ * `"all"` scope (so no chip is rendered). For `"project"`, the basename of the
+ * absolute path (the full path stays available via the `title`). `"machine"`
+ * renders as `"machine"`.
+ */
+export function scopeLabel(note: Note): string {
+  const s = note.scope
+  if (!s || s === "all") return ""
+  if (s === "machine") return "machine"
+  const p = note.project
+  if (!p) return "project"
+  return p.split("/").pop() ?? p
 }
 
 /** Structural equality for two string arrays (order-sensitive). */

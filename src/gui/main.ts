@@ -7,6 +7,7 @@
  */
 
 import type { MainContext } from "@opencode/plugin/gui/main"
+import { execFileSync } from "node:child_process"
 import { NotesApi } from "./contract"
 import type {
   AddInput,
@@ -55,6 +56,7 @@ const toNote = (r: NoteRow): Note => ({
   content: r.content,
   tags: r.tags ?? undefined,
   scope: r.scope ?? undefined,
+  project: r.project ?? undefined,
   author: r.author ?? undefined,
   verifiedAt: r.verified_at ?? undefined,
   disputedAt: r.disputed_at ?? undefined,
@@ -70,9 +72,28 @@ const toRevision = (r: RevisionRow): NoteDetail["revisions"][number] => ({
   category: r.category,
   tags: r.tags ?? undefined,
   scope: r.scope ?? undefined,
+  project: r.project ?? undefined,
   title: r.title,
   content: r.content,
 })
+
+/*
+ * The OS user that auto-fills the form's "Autor" field. Resolved in the
+ * main process (Node/Electron), where env vars and `whoami` are available.
+ */
+function osUser(): string {
+  const envUser =
+    process.env.USER || process.env.LOGNAME || process.env.USERNAME
+  if (envUser && envUser.trim()) return envUser.trim()
+  try {
+    return execFileSync("whoami", {
+      encoding: "utf8",
+      timeout: 2000,
+    }).trim()
+  } catch {
+    return ""
+  }
+}
 
 const failure = (error: string): NoteResult => ({ ok: false, error })
 
@@ -85,6 +106,7 @@ const fromWrite = (r: { ok: true; note: NoteRow } | { ok: false; error: string }
 
 export function main(ctx: MainContext): void {
   ctx.provide(NotesApi, {
+    whoami: async (): Promise<string> => osUser(),
     status: async (): Promise<Status> => {
       const { store } = await getStore()
       return {

@@ -22,6 +22,11 @@ export type Note = {
   category: string
   tags?: string | undefined
   scope?: string | undefined
+  /**
+   * Absolute project path. Only populated when `scope` is `"project"`;
+   * otherwise `undefined`.
+   */
+  project?: string | undefined
   title: string
   content: string
   author?: string | undefined
@@ -39,6 +44,10 @@ export type Revision = {
   category: string
   tags?: string | undefined
   scope?: string | undefined
+  /**
+   * Absolute project path. Only populated when `scope` is `"project"`.
+   */
+  project?: string | undefined
   title: string
   content: string
 }
@@ -79,7 +88,14 @@ export type AddInput = {
   content: string
   tags?: string | undefined
   author?: string | undefined
+  /**
+   * Scope type: `"all"`, `"machine"` or `"project"`.
+   */
   scope?: string | undefined
+  /**
+   * Absolute project path, used when `scope` is `"project"`.
+   */
+  project?: string | undefined
 }
 
 export type UpdateInput = {
@@ -88,7 +104,14 @@ export type UpdateInput = {
   content?: string | undefined
   tags?: string | undefined
   category?: string | undefined
+  /**
+   * Scope type: `"all"`, `"machine"` or `"project"`.
+   */
   scope?: string | undefined
+  /**
+   * Absolute project path, used when `scope` is `"project"`.
+   */
+  project?: string | undefined
 }
 
 export type DisputeInput = {
@@ -124,6 +147,7 @@ export const noteSchema = Schema.Struct({
   category: Schema.String,
   tags: optString,
   scope: optString,
+  project: optString,
   title: Schema.String,
   content: Schema.String,
   author: optString,
@@ -141,6 +165,7 @@ export const revisionSchema = Schema.Struct({
   category: Schema.String,
   tags: optString,
   scope: optString,
+  project: optString,
   title: Schema.String,
   content: Schema.String,
 })
@@ -185,6 +210,7 @@ export const addInputSchema = Schema.Struct({
   tags: optString,
   author: optString,
   scope: optString,
+  project: optString,
 })
 
 export const updateInputSchema = Schema.Struct({
@@ -194,6 +220,7 @@ export const updateInputSchema = Schema.Struct({
   tags: optString,
   category: optString,
   scope: optString,
+  project: optString,
 })
 
 export const disputeInputSchema = Schema.Struct({
@@ -223,6 +250,7 @@ export const NotesApi = Ipc.define({
   id: "notes",
   methods: {
     status: { output: statusSchema },
+    whoami: { output: Schema.String },
     list: { input: listOptionsSchema, output: Schema.Array(noteSchema) },
     view: { input: Schema.Number, output: Schema.optional(noteSchema) },
     detail: { input: Schema.Number, output: Schema.optional(noteDetailSchema) },
