@@ -80,7 +80,7 @@ type MultiSelectProps = {
   // function (always truthy) instead of its boolean, so the panel would be
   // stuck open.
   openFilter: Accessor<string | null>
-  which: "scope" | "tag"
+  which: "scope" | "tag" | "category"
   onOpenChange: () => void
 }
 
@@ -219,8 +219,10 @@ export function NotesView() {
   const [pinnedOnly, setPinnedOnly] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
-  // Only one combo can be open at a time; the single signal drives both the
-  // "Escopo" and "Tag" buttons (each combo's `open` is derived from here).
+  const [categoryFilter, setCategoryFilter] = createSignal<string[]>([])
+  // Only one combo can be open at a time; the single signal drives the
+  // "Escopo", "Tag" and "Categoria" buttons (each combo's `open` is derived
+  // from here).
   const [openFilter, setOpenFilter] = createSignal<string | null>(null)
   const [selectedId, setSelectedId] = createSignal<number | null>(null)
   const [detail, setDetail] = createSignal<NoteDetail | null>(null)
@@ -234,8 +236,9 @@ export function NotesView() {
   // shrink to whatever the active filter currently matches.
   const [allNotes, setAllNotes] = createSignal<Note[]>([])
   // Fetched, unfiltered results for the list view (all when there is no query,
-  // the search result when there is). Filters (retracted/pinned/scope/tag) are
-  // applied reactively below, so deselecting an option re-filters instantly.
+  // the search result when there is). Filters (retracted/pinned/scope/tag/
+  // category) are applied reactively below, so deselecting an option re-filters
+  // instantly.
   const [resNotes, setResNotes] = createSignal<Note[]>([])
   const [page, setPage] = createSignal(0)
 
@@ -243,7 +246,7 @@ export function NotesView() {
 
   // Toggle a combo open/closed (switching to another simply re-targets the
   // single `openFilter`, so only one panel is ever visible).
-  const toggleFilter = (which: "scope" | "tag") =>
+  const toggleFilter = (which: "scope" | "tag" | "category") =>
     setOpenFilter((v) => (v === which ? null : which))
 
   // Close any open combo when the pointer lands outside a `.filter-cell`, or on
@@ -524,7 +527,8 @@ export function NotesView() {
   }
 
   /* ---------- derived ---------- */
-  // Reactive filter application: retracted/pinned/scope/tag are applied here,
+  // Reactive filter application: retracted/pinned/scope/tag/category are
+  // applied here,
   // so deselecting an option re-filters instantly with no re-fetch (and no
   // stale read from an async load). All the predicate logic lives in
   // `applyFilters` (src/gui/filters.ts) and is unit-tested.
@@ -532,6 +536,7 @@ export function NotesView() {
     applyFilters(resNotes(), {
       scope: scopeFilter(),
       tag: tagFilter(),
+      category: categoryFilter(),
       pinnedOnly: pinnedOnly(),
       showRetracted: showRetracted(),
     })
@@ -774,9 +779,17 @@ export function NotesView() {
         .notes-count { font-size: 12px; color: var(--v2-text-text-muted); }
         .spacer { flex: 1; }
         .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-        .filter-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
-        /* Each combo is its own column; the dropdown hangs from the button. */
-        .filter-cell { position: relative; flex: 1; min-width: 0; }
+        .filter-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px 12px;
+          margin-bottom: 10px;
+          align-items: flex-start;
+        }
+        /* Each combo is its own column; the dropdown hangs from the button.
+           Cells have a minimum width so the third control (Categoria) wraps
+           to its own line instead of being crushed on narrow panels. */
+        .filter-cell { position: relative; flex: 1; min-width: 118px; }
         .filter-btn-row { display: flex; gap: 4px; align-items: stretch; }
         .filter-btn {
           display: flex;
@@ -786,8 +799,8 @@ export function NotesView() {
           flex: 1;
           width: auto;
           min-width: 0;
-          min-height: 32px;
-          padding: 4px 8px;
+          min-height: 34px;
+          padding: 5px 10px;
           border: 1px solid var(--v2-border-border-muted);
           border-radius: 4px;
           background: var(--v2-background-bg-layer-02);
@@ -808,12 +821,12 @@ export function NotesView() {
         }
         .filter-btn-label.is-placeholder { color: var(--v2-text-text-faint); font-style: italic; }
         /* Groups the placeholder/chips on the left; the caret sits at the end. */
-        .filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 4px; }
+        .filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 6px; }
         /* Combo button: the note-row .tag/.tags pill uses bg-layer-02 — the
            SAME token as this button's background — so it reads as invisible.
            Re-skin it here as a higher-contrast filled pill that works in
            light + dark, and never truncate the text (the button has room). */
-        .filter-btn-content .tags { max-width: none; overflow: visible; }
+        .filter-btn-content .tags { max-width: none; overflow: visible; gap: 6px; }
         .filter-btn-content .tag {
           background: var(--v2-overlay-simple-overlay-pressed);
           border: 1px solid var(--v2-border-border-muted);
@@ -1172,7 +1185,6 @@ export function NotesView() {
         </button>
       </div>
 
-                  <Show when={scopeOptions().length > 0 || tagOptions().length > 0}>
         <div class="filter-row">
           <Show when={scopeOptions().length > 0}>
             <MultiSelect
@@ -1198,8 +1210,17 @@ export function NotesView() {
               onOpenChange={() => toggleFilter("tag")}
             />
           </Show>
+          <MultiSelect
+            label="Categoria"
+            placeholder="Todas as categorias"
+            options={CATEGORIES.map((c) => c.value)}
+            value={categoryFilter}
+            onValueChange={setCategoryFilter}
+            openFilter={openFilter}
+            which="category"
+            onOpenChange={() => toggleFilter("category")}
+          />
         </div>
-      </Show>
 
       <Show when={loading()}>
         <div class="loader-row">

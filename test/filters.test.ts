@@ -55,27 +55,30 @@ describe("tagsOf", () => {
 /* applyFilters — scope / tag / pinned (all notes non-retracted)        */
 /* ------------------------------------------------------------------ */
 
+// Categories are distributed across the fixture so the category predicate can
+// be exercised against the same notes scope/tag tests use.
 const base: Note[] = [
-  note({ id: 1, scope: "project:a", tags: "x y" }),
-  note({ id: 2, scope: "project:b", tags: "z" }),
-  note({ id: 3, pinned: true, scope: "project:a", tags: "y" }),
-  note({ id: 4, scope: "global", tags: "w" }),
+  note({ id: 1, scope: "project:a", tags: "x y", category: "problem" }),
+  note({ id: 2, scope: "project:b", tags: "z", category: "decision" }),
+  note({ id: 3, pinned: true, scope: "project:a", tags: "y", category: "config" }),
+  note({ id: 4, scope: "global", tags: "w", category: "problem" }),
 ];
 
 const ALL = base.map((n) => n.id); // [1, 2, 3, 4]
 
 // ids returned when filtering `base` by the given chips (retracted hidden,
 // the default main-list state). Keeps assertions flat and readable.
-function idsOf(p: { scope?: string[]; tag?: string[]; pinnedOnly?: boolean }) {
+function idsOf(p: { scope?: string[]; tag?: string[]; category?: string[]; pinnedOnly?: boolean }) {
   return applyFilters(base, {
     scope: p.scope ?? [],
     tag: p.tag ?? [],
+    category: p.category ?? [],
     pinnedOnly: p.pinnedOnly ?? false,
     showRetracted: false,
   }).map((n) => n.id);
 }
 
-describe("applyFilters (scope / tag / pinned)", () => {
+describe("applyFilters (scope / tag / category / pinned)", () => {
   test("no chips selected -> every note, in order", () => {
     expect(idsOf({})).toEqual(ALL);
   });
@@ -117,6 +120,27 @@ describe("applyFilters (scope / tag / pinned)", () => {
     expect(idsOf({ tag: [] })).toEqual(ALL);
   });
 
+  test("category: empty -> all, specific -> matching only", () => {
+    expect(idsOf({ category: [] })).toEqual(ALL);
+    expect(idsOf({ category: ["problem"] })).toEqual([1, 4]);
+    expect(idsOf({ category: ["decision", "config"] })).toEqual([2, 3]);
+    // an unknown category matches nothing for that value, keeps the rest
+    expect(idsOf({ category: ["decision", "nonexistent"] })).toEqual([2]);
+  });
+
+  test("category + scope combine (AND)", () => {
+    expect(idsOf({ scope: ["project:a"], category: ["problem"] })).toEqual([1]);
+    expect(idsOf({ scope: ["project:a"], category: ["config"] })).toEqual([3]);
+    expect(idsOf({ scope: ["global"], category: ["problem"] })).toEqual([4]);
+    // all three combine (AND)
+    expect(idsOf({ scope: ["project:a"], tag: ["x"], category: ["problem"] })).toEqual([1]);
+  });
+
+  test("deselecting a category (selection -> []) returns the full list", () => {
+    expect(idsOf({ category: ["problem"] })).toEqual([1, 4]); // narrows while selected
+    expect(idsOf({ category: [] })).toEqual(ALL); // back to full when deselected
+  });
+
   test("order is preserved (stable filter)", () => {
     expect(idsOf({ scope: ["project:a", "global"] })).toEqual([1, 3, 4]);
   });
@@ -134,19 +158,19 @@ const withRetracted: Note[] = [
 
 describe("applyFilters (retracted)", () => {
   test("showRetracted=false hides retracted notes", () => {
-    const r = applyFilters(withRetracted, { scope: [], tag: [], pinnedOnly: false, showRetracted: false });
+    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: false });
     expect(r.map((n) => n.id)).toEqual([1]);
   });
 
   test("showRetracted=true shows only the retracted notes", () => {
-    const r = applyFilters(withRetracted, { scope: [], tag: [], pinnedOnly: false, showRetracted: true });
+    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: true });
     expect(r.map((n) => n.id)).toEqual([2]);
   });
 
   test("retracted notes drop out of tag matches when hidden", () => {
-    const hidden = applyFilters(withRetracted, { scope: [], tag: ["b"], pinnedOnly: false, showRetracted: false });
+    const hidden = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: false });
     expect(hidden.map((n) => n.id)).toEqual([]); // "b" only hits the retracted note
-    const shown = applyFilters(withRetracted, { scope: [], tag: ["b"], pinnedOnly: false, showRetracted: true });
+    const shown = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: true });
     expect(shown.map((n) => n.id)).toEqual([2]); // same tag while Retiradas is on
   });
 });

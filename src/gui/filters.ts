@@ -25,6 +25,8 @@ export type Filters = {
   scope: readonly string[]
   /** Restrict to notes carrying any of these tags. `[]` means all. */
   tag: readonly string[]
+  /** Restrict to notes with any of these categories. `[]` means all. */
+  category: readonly string[]
   /** When true, only pinned notes. */
   pinnedOnly: boolean
   /**
@@ -43,7 +45,7 @@ export type Filters = {
  */
 export function applyFilters(
   res: Note[],
-  { scope, tag, pinnedOnly, showRetracted }: Filters
+  { scope, tag, category, pinnedOnly, showRetracted }: Filters
 ): Note[] {
   let out = res
   out = out.filter(
@@ -55,6 +57,7 @@ export function applyFilters(
   if (pinnedOnly) out = out.filter((n) => n.pinned)
   if (scope.length) out = out.filter((n) => scope.includes(n.scope ?? ""))
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
+  if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))
   return out
 }
 
