@@ -34,6 +34,13 @@ export type Filters = {
    * When false, retracted notes are hidden from the main list.
    */
   showRetracted: boolean
+  /**
+   * When true, restrict to notes from the *current project*: project-scoped
+   * notes whose `scopeOf` key equals `projectPath`.
+   */
+  projectOnly: boolean
+  /** The current project path to match against when `projectOnly` is true. */
+  projectPath: string
 }
 
 /**
@@ -45,7 +52,7 @@ export type Filters = {
  */
 export function applyFilters(
   res: Note[],
-  { scope, tag, category, pinnedOnly, showRetracted }: Filters
+  { scope, tag, category, pinnedOnly, showRetracted, projectOnly, projectPath }: Filters
 ): Note[] {
   let out = res
   out = out.filter(
@@ -55,6 +62,7 @@ export function applyFilters(
         : n.retractedAt === undefined
   )
   if (pinnedOnly) out = out.filter((n) => n.pinned)
+  if (projectOnly) out = out.filter((n) => scopeOf(n) === projectPath)
   if (scope.length) out = out.filter((n) => scope.includes(scopeOf(n)))
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
   if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))

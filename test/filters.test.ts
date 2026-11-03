@@ -149,6 +149,8 @@ function idsOf(p: {
   tag?: string[];
   category?: string[];
   pinnedOnly?: boolean;
+  projectOnly?: boolean;
+  projectPath?: string;
 }) {
   return applyFilters(base, {
     scope: p.scope ?? [],
@@ -156,6 +158,8 @@ function idsOf(p: {
     category: p.category ?? [],
     pinnedOnly: p.pinnedOnly ?? false,
     showRetracted: false,
+    projectOnly: p.projectOnly ?? false,
+    projectPath: p.projectPath ?? "",
   }).map((n) => n.id);
 }
 
@@ -231,6 +235,24 @@ describe("applyFilters (scope / tag / category / pinned)", () => {
   test("order is preserved (stable filter)", () => {
     expect(idsOf({ scope: [TOOLS, "machine", "all"] })).toEqual([2, 4, 5, 6]);
   });
+
+  test("projectOnly: false -> all, true -> notes from the given project only", () => {
+    expect(idsOf({ projectOnly: false })).toEqual(ALL);
+    // two notes share the INFRA project
+    expect(idsOf({ projectOnly: true, projectPath: INFRA })).toEqual([1, 3]);
+    expect(idsOf({ projectOnly: true, projectPath: TOOLS })).toEqual([2]);
+    // a path with no notes -> nothing
+    expect(idsOf({ projectOnly: true, projectPath: "/other/project" })).toEqual([]);
+    // no current project (empty path) -> nothing
+    expect(idsOf({ projectOnly: true, projectPath: "" })).toEqual([]);
+    // AND with the other filters
+    expect(idsOf({ projectOnly: true, projectPath: INFRA, tag: ["x"] })).toEqual([1]);
+    expect(idsOf({ projectOnly: true, projectPath: INFRA, tag: ["z3"] })).toEqual([3]);
+    expect(idsOf({ projectOnly: true, projectPath: INFRA, category: ["config"] })).toEqual([3]);
+    expect(idsOf({ projectOnly: true, projectPath: INFRA, category: ["decision"] })).toEqual([]);
+    // combined with a conflicting scope selection (AND)
+    expect(idsOf({ projectOnly: true, projectPath: INFRA, scope: [TOOLS] })).toEqual([]);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -245,19 +267,19 @@ const withRetracted: Note[] = [
 
 describe("applyFilters (retracted)", () => {
   test("showRetracted=false hides retracted notes", () => {
-    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: false });
+    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: false, projectOnly: false, projectPath: "" });
     expect(r.map((n) => n.id)).toEqual([1]);
   });
 
   test("showRetracted=true shows only the retracted notes", () => {
-    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: true });
+    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: true, projectOnly: false, projectPath: "" });
     expect(r.map((n) => n.id)).toEqual([2]);
   });
 
   test("retracted notes drop out of tag matches when hidden", () => {
-    const hidden = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: false });
+    const hidden = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: false, projectOnly: false, projectPath: "" });
     expect(hidden.map((n) => n.id)).toEqual([]); // "b" only hits the retracted note
-    const shown = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: true });
+    const shown = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: true, projectOnly: false, projectPath: "" });
     expect(shown.map((n) => n.id)).toEqual([2]); // same tag while Retiradas is on
   });
 });

@@ -261,6 +261,7 @@ export function NotesView() {
   const [query, setQuery] = createSignal("")
   const [showRetracted, setShowRetracted] = createSignal(false)
   const [pinnedOnly, setPinnedOnly] = createSignal(false)
+  const [projectOnly, setProjectOnly] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
   const [categoryFilter, setCategoryFilter] = createSignal<string[]>([])
@@ -633,6 +634,8 @@ export function NotesView() {
       category: categoryFilter(),
       pinnedOnly: pinnedOnly(),
       showRetracted: showRetracted(),
+      projectOnly: projectOnly(),
+      projectPath: currentProjectPath(),
     })
   )
   const count = createMemo(() => filteredNotes().length)
@@ -1337,6 +1340,12 @@ export function NotesView() {
         >
           {t("filterRetracted")}
         </button>
+        <button
+          class={`btn-app ${projectOnly() ? "is-active" : ""}`}
+          onClick={() => setProjectOnly(!projectOnly())}
+        >
+          {t("filterProject")}
+        </button>
       </div>
 
         <div class="filter-row">
@@ -1509,7 +1518,10 @@ export function NotesView() {
               <Show when={!query().trim() && showRetracted()}>
                 t("empty.retracted")
               </Show>
-              <Show when={!query().trim() && !showRetracted()}>
+              <Show when={!query().trim() && !showRetracted() && projectOnly()}>
+                t("empty.project")
+              </Show>
+              <Show when={!query().trim() && !showRetracted() && !projectOnly()}>
                 t("empty.none")
               </Show>
             </div>
@@ -1520,7 +1532,10 @@ export function NotesView() {
               <Show when={!query().trim() && showRetracted()}>
                 t("empty.hint.retracted")
               </Show>
-              <Show when={!query().trim() && !showRetracted()}>
+              <Show when={!query().trim() && !showRetracted() && projectOnly()}>
+                t("empty.hint.project")
+              </Show>
+              <Show when={!query().trim() && !showRetracted() && !projectOnly()}>
                 t("empty.hint.none")
               </Show>
             </div>
