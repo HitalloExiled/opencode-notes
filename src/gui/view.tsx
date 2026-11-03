@@ -1203,6 +1203,16 @@ export function NotesView() {
               onOpenChange={() => toggleFilter("scope")}
             />
           </Show>
+          <MultiSelect
+            label="Categoria"
+            placeholder="Todas as categorias"
+            options={CATEGORIES.map((c) => c.value)}
+            value={categoryFilter}
+            onValueChange={setCategoryFilter}
+            openFilter={openFilter}
+            which="category"
+            onOpenChange={() => toggleFilter("category")}
+          />
           <Show when={tagOptions().length > 0}>
             <MultiSelect
               label="Tag"
@@ -1215,16 +1225,6 @@ export function NotesView() {
               onOpenChange={() => toggleFilter("tag")}
             />
           </Show>
-          <MultiSelect
-            label="Categoria"
-            placeholder="Todas as categorias"
-            options={CATEGORIES.map((c) => c.value)}
-            value={categoryFilter}
-            onValueChange={setCategoryFilter}
-            openFilter={openFilter}
-            which="category"
-            onOpenChange={() => toggleFilter("category")}
-          />
         </div>
 
       <Show when={loading()}>
