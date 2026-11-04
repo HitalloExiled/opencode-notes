@@ -790,21 +790,29 @@ export function NotesView() {
   const isConfirmed = (n: Note): boolean =>
     n.verifiedAt !== undefined && n.disputedAt === undefined && n.retractedAt === undefined
 
-  const trustBadges = (n: Note) => (
+  // Alert states (retracted / disputed) stay in the title row, where they read
+  // as the note's current status; verified / pinned move to the pills row.
+  const alertBadges = (n: Note) => (
     <span class="badges">
-      <Show when={n.pinned}>
-        <span class="badge badge-pinned">{t("badge.pinned")}</span>
-      </Show>
       <Show when={n.retractedAt !== undefined}>
         <span class="badge badge-retracted">{t("badge.retracted")}</span>
       </Show>
       <Show when={n.disputedAt !== undefined}>
         <span class="badge badge-disputed">{t("badge.disputed")}</span>
       </Show>
+    </span>
+  )
+
+  // Order in the pills row: verified, pinned, then scope, then tags.
+  const pillBadges = (n: Note) => (
+    <>
       <Show when={n.verifiedAt !== undefined && !n.disputedAt && !n.retractedAt}>
         <span class="badge badge-verified">{t("badge.verified")}</span>
       </Show>
-    </span>
+      <Show when={n.pinned}>
+        <span class="badge badge-pinned">{t("badge.pinned")}</span>
+      </Show>
+    </>
   )
 
   const card = (n: Note) => (
@@ -820,7 +828,7 @@ export function NotesView() {
           <span class="note-title" title={n.title}>
             {n.title}
           </span>
-          {trustBadges(n)}
+          {alertBadges(n)}
           <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
         </button>
         <ctx.ui.Tooltip value={t("actions.attachTooltip")}>
@@ -835,6 +843,7 @@ export function NotesView() {
       </div>
       <Show when={tagsOf(n).length > 0 || noteScopeLabel(n)}>
         <div class="note-pills">
+          {pillBadges(n)}
           <Show when={noteScopeLabel(n)}>
             <span
               class="tag tag-scope"
