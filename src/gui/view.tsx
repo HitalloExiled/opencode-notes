@@ -829,7 +829,7 @@ export function NotesView() {
             {n.title}
           </span>
           {alertBadges(n)}
-          <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
+          <ctx.ui.Icon name="chevron-grabber-vertical" size="small" class="chevron" />
         </button>
         <ctx.ui.Button
           class="note-attach"
