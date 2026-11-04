@@ -820,6 +820,21 @@ export function NotesView() {
           <span class="note-title" title={n.title}>
             {n.title}
           </span>
+          {trustBadges(n)}
+          <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
+        </button>
+        <ctx.ui.Tooltip value={t("actions.attachTooltip")}>
+          <ctx.ui.IconButton
+            class="note-attach"
+            icon="plus"
+            label={t("actions.attach", n.id)}
+            size="small"
+            onClick={() => addToContext(n)}
+          />
+        </ctx.ui.Tooltip>
+      </div>
+      <Show when={tagsOf(n).length > 0 || noteScopeLabel(n)}>
+        <div class="note-pills">
           {tagChips(n, 2)}
           <Show when={noteScopeLabel(n)}>
             <span
@@ -835,19 +850,8 @@ export function NotesView() {
               {noteScopeLabel(n)}
             </span>
           </Show>
-          {trustBadges(n)}
-          <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
-        </button>
-        <ctx.ui.Tooltip value={t("actions.attachTooltip")}>
-          <ctx.ui.IconButton
-            class="note-attach"
-            icon="plus"
-            label={t("actions.attach", n.id)}
-            size="small"
-            onClick={() => addToContext(n)}
-          />
-        </ctx.ui.Tooltip>
-      </div>
+        </div>
+      </Show>
       <Show when={selectedId() === n.id}>
         <div class="note-body">
           <div class="meta">
@@ -1170,6 +1174,16 @@ export function NotesView() {
         .tag-more { color: var(--v2-text-text-faint); }
         /* Scope reads as hierarchy, not as a free-form tag. */
         .tag-scope { color: var(--v2-text-text-base); border: 1px solid var(--v2-border-border-muted); }
+        /* Pills (tags + scope) live on their own line directly under the title. */
+        .note-pills {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          min-width: 0;
+          padding: 4px 12px 6px;
+        }
+        .note-pills .tags { max-width: none; flex-wrap: wrap; }
         .badges { display: flex; gap: 4px; flex: 0 0 auto; }        .badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
         .badge-pinned { border: 1px solid var(--v2-border-border-muted); color: var(--v2-icon-icon-base); }
         .badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
