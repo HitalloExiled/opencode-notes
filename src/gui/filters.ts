@@ -62,23 +62,45 @@ export function applyFilters(
         : n.retractedAt === undefined
   )
   if (pinnedOnly) out = out.filter((n) => n.pinned)
-  if (projectOnly) out = out.filter((n) => scopeOf(n) === projectPath)
-  if (scope.length) out = out.filter((n) => scope.includes(scopeOf(n)))
+  // Multi-project: a note belongs to the current project when *any* of its
+  // project paths equals the path.
+  if (projectOnly)
+    out = out.filter((n) => n.scope === "project" && n.projects.includes(projectPath))
+  if (scope.length) out = out.filter((n) => scope.some((s) => noteMatchesScope(n, s)))
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
   if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))
   return out
 }
 
 /**
- * The filter key a note belongs to: `"all"` / `"machine"` / the absolute
- * project path (for project-scoped notes, falling back to `"project"` when
- * the path is empty). Two notes in the same project compare equal on the
- * key, which is what makes the multi-select scope filter group by project.
+ * The filter keys a note belongs to. A non-project note has a single key (its
+ * scope type: `"all"` or `"machine"`); a project-scoped note has one key per
+ * project path (falling back to `"project"` when the set is empty). A note
+ * with multiple projects therefore matches several options at once.
+ */
+export function scopeKeysOf(note: Note): readonly string[] {
+  const s = note.scope
+  if (s === "project") return note.projects.length ? note.projects : ["project"]
+  return [s ?? "all"]
+}
+
+/**
+ * Does a note match a single scope *option*? True when the option is any of
+ * the note's keys — this is what makes a multi-project note show up under
+ * *each* of its projects in the scope filter, and under the `projectOnly`
+ * check when any of its paths equals the target.
+ */
+export function noteMatchesScope(note: Note, opt: string): boolean {
+  return scopeKeysOf(note).includes(opt)
+}
+
+/**
+ * The filter key a note belongs to (its first key). Two notes in the same
+ * project compare equal on the key, which is what makes the multi-select scope
+ * filter group by project.
  */
 export function scopeOf(note: Note): string {
-  const s = note.scope
-  if (s === "project") return note.project ?? "project"
-  return s ?? "all"
+  return scopeKeysOf(note)[0] ?? "all"
 }
 
 /**
@@ -91,9 +113,10 @@ export function scopeLabel(note: Note): string {
   const s = note.scope
   if (!s || s === "all") return ""
   if (s === "machine") return "machine"
-  const p = note.project
-  if (!p) return "project"
-  return p.split("/").pop() ?? p
+  const paths = note.projects
+  if (paths.length === 0) return "project"
+  // Multi-project: one basename per path, joined so every project is visible.
+  return paths.map((p) => p.split("/").pop() ?? p).join(" · ")
 }
 
 /** Structural equality for two string arrays (order-sensitive). */

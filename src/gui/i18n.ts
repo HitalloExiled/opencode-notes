@@ -63,7 +63,7 @@ const EN = {
   "form.category.label": "Category",
   "form.scope.label": "Scope",
   "form.project.label": "Project",
-  "form.project.placeholder": "absolute project path",
+  "form.project.placeholder": "Choose one or more projects",
   "form.tags.label": "Tags",
   "form.tags.placeholder": "space-separated keywords",
   "form.cancel": "Cancel",
@@ -168,7 +168,7 @@ const PT: Record<keyof typeof EN, string> = {
   "form.category.label": "Categoria",
   "form.scope.label": "Escopo",
   "form.project.label": "Projeto",
-  "form.project.placeholder": "caminho absoluto do projeto",
+  "form.project.placeholder": "Escolha um ou mais projetos",
   "form.tags.label": "Tags",
   "form.tags.placeholder": "palavras-chave separadas por espaço",
   "form.cancel": "Cancelar",
@@ -266,19 +266,22 @@ export function useT(): (key: string, ...args: unknown[]) => string {
 }
 
 /**
- * Display label for a note's scope: the type names are localized; the
- * project value is data and never translated. Returns `""` for the default
- * `"all"` scope (no chip).
+ * Display label for a note's scope: the type names are localized; the project
+ * data is never translated. Returns `""` for the default `"all"` scope (no
+ * chip). For project scope, one basename per project path is joined (a single
+ * path shows just its basename; several paths show all of them).
  */
 export function scopeChipLabel(
   t: (key: string, ...args: unknown[]) => string,
   scope: string | undefined,
-  project?: string | undefined,
+  projects?: readonly string[] | undefined,
 ): string {
   if (!scope || scope === "all") return ""
   if (scope === "machine") return t("scopeMachine")
   if (scope === "project") {
-    return project ? project.split("/").pop() ?? project : t("scopeProject")
+    const paths = projects ?? []
+    if (paths.length === 0) return t("scopeProject")
+    return paths.map((p) => p.split("/").pop() ?? p).join(" · ")
   }
   return t("scopeProject")
 }

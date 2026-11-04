@@ -66,23 +66,28 @@ const CATEGORIES = [
 type ToolResult = { content: string; metadata?: Record<string, unknown> };
 
 /**
- * A project-scoped note must carry a real project path. The legacy
+ * A project-scoped note must carry at least one real project path. The legacy
  * `project:<name>` free-form in `scope` is no longer accepted by the tools —
- * the path lives in its own `project` field (absolute, no spaces). Returns a
- * rejected result when the rule is violated, otherwise `null`.
+ * paths live in their own `projects` array (absolute, no spaces, one or more
+ * entries). Returns a rejected result when the rule is violated, otherwise
+ * `null`.
  */
-function requireProjectPath(args: {
+function requireProjects(args: {
   scope?: string | undefined;
-  project?: string | undefined;
+  projects?: string[] | undefined;
 }): ToolResult | null {
   const type = args.scope ? parseScope(args.scope)?.type : undefined;
   if (type !== "project") return null;
-  const project = args.project?.trim();
-  if (!project) {
+  const projects = (args.projects ?? [])
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (projects.length === 0) {
     return {
       content:
-        "❌ scope='project' requires a non-empty 'project' path (absolute, no spaces).\n" +
-        "Use scope: 'project' and project: '/abs/path/to/project'.",
+        "❌ scope='project' requires at least one project path in the " +
+        "`projects` array (absolute, no spaces).\n" +
+        "Use scope: 'project' and projects: ['/abs/path/to/project'] " +
+        "(one or more paths).",
       metadata: { rejected: true },
     };
   }
@@ -139,11 +144,12 @@ const addInput = z.object({
       "Scope type: 'all'/'global' (machine-independent, the default), " +
         "'machine', or 'project'.",
     ),
-  project: z
-    .string()
+  projects: z
+    .array(z.string().min(1, "each project path must be non-empty"))
     .optional()
     .describe(
-      "Absolute project path (no spaces). Required when scope is 'project'. " +
+      "One or more absolute project paths (no spaces). Required when scope is " +
+        "'project' (pass an array with at least one path). " +
         "The legacy 'project:<name>' value in `scope` is no longer accepted.",
     ),
   author: z
@@ -171,9 +177,11 @@ export const add = {
     const content = args.content ?? "";
     const tags = args.tags ?? "";
     const author = args.author?.trim() || undefined;
-    const project = args.project?.trim() || undefined;
+    const projects = (args.projects ?? [])
+      .map((p) => p.trim())
+      .filter(Boolean);
 
-    const projErr = requireProjectPath({ scope: args.scope, project: args.project });
+    const projErr = requireProjects({ scope: args.scope, projects: args.projects });
     if (projErr) return projErr;
 
     if (category === "problem") {
@@ -197,7 +205,7 @@ export const add = {
     }
 
     const { db } = await requireStore();
-    const result = addNote(db, { category, title: args.title, content, tags, author, scope: args.scope, project });
+    const result = addNote(db, { category, title: args.title, content, tags, author, scope: args.scope, projects });
     if (!result.ok) return fail(result.error);
     return { content: renderAdd(result), metadata: { category, author, exit: 0 } };
   },
@@ -222,14 +230,14 @@ const updateInput = z.object({
       "New scope type: 'all'/'global', 'machine', or 'project'. " +
         "(empty string clears it.)",
     ),
-  project: z
-    .string()
+  projects: z
+    .array(z.string().min(1, "each project path must be non-empty"))
     .optional()
     .describe(
-      "New absolute project path (no spaces). Required when scope is " +
-        "'project' (set it to change; to drop the project, set scope to " +
-        "'all'/'global'). The legacy 'project:<name>' value in `scope` is " +
-        "no longer accepted.",
+      "New absolute project paths (no spaces). Set it to change the set of " +
+        "project-scoped paths; required when scope is 'project' (pass an array " +
+        "with at least one path). To drop project scope, set scope to 'all'/'global'. " +
+        "The legacy 'project:<name>' value in `scope` is no longer accepted.",
     ),
 });
 type UpdateArgs = z.infer<typeof updateInput>;
@@ -254,18 +262,18 @@ export const update = {
       args.tags === undefined &&
       args.category === undefined &&
       args.scope === undefined &&
-      args.project === undefined
+      args.projects === undefined
     ) {
       return {
         content:
           "❌ Nothing to update. Pass at least one of " +
-          "title/content/tags/category/scope/project.\n" +
+          "title/content/tags/category/scope/projects.\n" +
           "If the goal is to record new information, use notes.add instead.",
         metadata: { rejected: true },
       };
     }
 
-    const projErr = requireProjectPath({ scope: args.scope, project: args.project });
+    const projErr = requireProjects({ scope: args.scope, projects: args.projects });
     if (projErr) return projErr;
 
     if (args.title !== undefined && !args.title.trim()) {
@@ -295,7 +303,10 @@ export const update = {
       content: args.content,
       category: args.category,
       scope: args.scope,
-      project: args.project?.trim() || undefined,
+      projects:
+        args.projects !== undefined
+          ? (args.projects ?? []).map((p) => p.trim()).filter(Boolean)
+          : undefined,
     });
     if (!result.ok) return fail(result.error);
     return { content: renderUpdate(result), metadata: { id: args.id, exit: 0 } };

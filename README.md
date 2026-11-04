@@ -44,7 +44,8 @@ registrar notas.
 
 1. **Registra fatos duráveis** (`add`) com categoria, tags, autor e scope por
    campo: `scope` (`global`/`all` por padrão, `machine` ou `project`) e, quando
-   `scope` for `project`, o caminho absoluto em `project` (sem espaços). O
+   `scope` for `project`, o array `projects` com um ou mais caminhos absolutos
+   (sem espaços; a nota pode estar ligada a vários projetos). O
    formato legado (`Scope:` na primeira linha do conteúdo ou `project:<nome>`
    em `scope`) não é mais aceito. Notas `#problem` são validadas: sem
    Sintoma/Causa/Solução não são salvas.
@@ -87,7 +88,7 @@ StandardSchemaV1); cada tool retorna `{content, metadata}`.
 agentes: quando registrar (problemas resolvidos com Sintoma/Causa/Solução —
 obrigatório antes de fechar tarefa, decisões, configs, snippets), o ciclo de
 confiança (`confirm`/`dispute`/`retract`), o `update` como último recurso com
-histórico reversível, convenções (categorias, `scope` + `project`, tags, autor),
+histórico reversível, convenções (categorias, `scope` + `projects`, tags, autor),
 backup do arquivo SQLite e a regra de escrever as notas em inglês. O
 `opencode-tools` expõe o skill via symlink
 `~/.config/opencode/skills/notes/SKILL.md` (o `setup.sh` faz o link a partir

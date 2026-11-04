@@ -52,7 +52,7 @@ describe("normalizeCategory", () => {
 /* parseScope / normalizeScope                                           */
 /* ------------------------------------------------------------------ */
 
-describe("parseScope / normalizeScope (v8 model: all/machine/project + project path)", () => {
+describe("parseScope / normalizeScope (scope type; legacy 'project:X' still parses)", () => {
   test("empty / null / whitespace -> null", () => {
     expect(parseScope(undefined)).toBeNull();
     expect(parseScope(null)).toBeNull();
@@ -103,16 +103,16 @@ describe("parseScope / normalizeScope (v8 model: all/machine/project + project p
 /* ------------------------------------------------------------------ */
 
 describe("MIGRATION_007 (categories without '#')", () => {
-  test("legacy '#'-prefixed rows are stripped on upgrade (v6 -> v8)", async () => {
+  test("legacy '#'-prefixed rows are stripped on upgrade (v6 -> v9)", async () => {
     const db = emptyDb();
-    initSchema(db); // full schema, v8
+    initSchema(db); // full schema, v9
 
-    // Rewind to the legacy state a v6 DB would have: drop the v8 additions
-    // (so the v7 -> v8 upgrade adds `project` again), then seed '#'-prefixed
-    // categories written by the old normalizeCategory.
-    db.prepare("DROP INDEX IF EXISTS idx_notes_scope_project").run();
-    db.prepare("ALTER TABLE notes DROP COLUMN project").run();
-    db.prepare("ALTER TABLE note_revisions DROP COLUMN project").run();
+    // Rewind to the legacy state a v6 DB would have: v9 differs from v6 by
+    // migrations 007 (category rewrite), 008 (scope type + index) and 009
+    // (join tables). Only the two join tables are schema-level, so dropping
+    // them lands exactly on v6 (006's `idx_notes_scope` survives both).
+    db.prepare("DROP TABLE IF EXISTS note_projects").run();
+    db.prepare("DROP TABLE IF EXISTS note_revision_projects").run();
     db.prepare("PRAGMA user_version = 6").run();
     db.prepare(
       "INSERT INTO notes (timestamp, category, tags, scope, title, content, author) VALUES (?, ?, ?, ?, ?, ?, NULL)"
@@ -121,7 +121,8 @@ describe("MIGRATION_007 (categories without '#')", () => {
       "INSERT INTO note_revisions (note_id, revised_at, timestamp, category, tags, title, content) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ).run(1, "2020-01-02 00:00:00", "2020-01-01 00:00:00", "#config", "", "t", "c");
 
-    // Re-open (upgrade): migration 007 must strip the prefix in place.
+    // Re-open (upgrade): migrations 007, 008 and 009 run; 007 must strip the
+    // prefix in place.
     initSchema(db);
 
     expect((db.prepare("SELECT category FROM notes WHERE id = 1").get() as { category?: string }).category).toBe(
@@ -130,8 +131,8 @@ describe("MIGRATION_007 (categories without '#')", () => {
     expect(
       (db.prepare("SELECT category FROM note_revisions WHERE id = 1").get() as { category?: string }).category,
     ).toBe("config");
-    // A v6 database upgrades through 007 and 008 in one open -> v8.
-    expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(8);
+    // A v6 database upgrades through 007, 008 and 009 in one open -> v9.
+    expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(9);
     // 008 also rewrites the seeded scopes (global -> all, etc.).
     expect((db.prepare("SELECT scope FROM notes WHERE id = 1").get() as { scope?: string }).scope).toBe("all");
   });
@@ -139,7 +140,7 @@ describe("MIGRATION_007 (categories without '#')", () => {
   test("plain categories and plain writes survive untouched", async () => {
     const db = emptyDb();
     initSchema(db);
-    initSchema(db); // idempotent, already at v8
+    initSchema(db); // idempotent, already at v9
 
     const res = addNote(db, {
       category: "problem",
@@ -152,7 +153,7 @@ describe("MIGRATION_007 (categories without '#')", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* migration 008 (scope type + project path column)                     */
+/* migration 008 (scope type + project paths) and 009 (join tables)     */
 /* ------------------------------------------------------------------ */
 
 // Builds a database that looks like a pre-v8 (v7) one: the full schema
@@ -160,11 +161,12 @@ describe("MIGRATION_007 (categories without '#')", () => {
 // then seeds the legacy `scope` values a v6-era app would have written.
 function legacyV7Db(): any {
   const db = emptyDb();
-  initSchema(db); // v8 schema
-  // Rewind to the shape a v7 database has.
-  db.prepare("DROP INDEX IF EXISTS idx_notes_scope_project").run();
-  db.prepare("ALTER TABLE notes DROP COLUMN project").run();
-  db.prepare("ALTER TABLE note_revisions DROP COLUMN project").run();
+  initSchema(db); // v9 schema
+  // Rewind to the shape a v7 database has. v9 differs from v7 only by the two
+  // join tables (009 created them); the v8 `project` column is absent in both
+  // v7 and v9, and `idx_notes_scope` is present in both.
+  db.prepare("DROP TABLE IF EXISTS note_projects").run();
+  db.prepare("DROP TABLE IF EXISTS note_revision_projects").run();
   db.prepare("PRAGMA user_version = 7").run();
   db.prepare(
     "INSERT INTO notes (timestamp, category, tags, scope, title, content) VALUES (?, ?, ?, ?, ?, ?)"
@@ -215,62 +217,63 @@ function legacyV7Db(): any {
   return db;
 }
 
-describe("MIGRATION_008 (scope type + project path)", () => {
-  test("legacy scope values are rewritten on upgrade (v7 -> v8)", async () => {
+describe("MIGRATION_008 + 009 (scope type, project column -> join tables)", () => {
+  test("legacy scope values are rewritten on upgrade (v7 -> v9)", async () => {
     const db = legacyV7Db();
 
-    // Re-open (upgrade): migration 008 must rewrite scopes, fill
-    // `project`, swap indexes, and bump to v8.
+    // Re-open (upgrade): 008 rewrites scopes and fills the legacy `project`
+    // column; 009 backfills it into the join tables, drops the column, and
+    // lands on v9.
     initSchema(db);
 
     const row = (id: number) =>
-      db.prepare("SELECT scope, project FROM notes WHERE id = ?").get(id) as {
-        scope?: string;
-        project?: string | null;
-      };
+      db.prepare("SELECT scope FROM notes WHERE id = ?").get(id) as { scope?: string };
+    const join = (table: string, fk: string, key: number): string[] =>
+      (
+        db
+          .prepare(`SELECT project FROM ${table} WHERE ${fk} = ? ORDER BY project`)
+          .all(key)
+      )
+        .map((r: { project: string }) => r.project);
 
     expect(row(1).scope).toBe("all"); // NULL -> all
-    expect(row(1).project).toBeNull();
+    expect(join("note_projects", "note_id", 1)).toEqual([]);
     expect(row(2).scope).toBe("all"); // global -> all
     expect(row(3).scope).toBe("machine");
     expect(row(4).scope).toBe("machine"); // machine:rafael -> machine (name dropped)
-    expect(row(4).project).toBeNull();
     expect(row(5).scope).toBe("project");
-    expect(row(5).project).toBe("agentic-dev-infra");
+    expect(join("note_projects", "note_id", 5)).toEqual(["agentic-dev-infra"]);
     expect(row(6).scope).toBe("project");
-    expect(row(6).project).toBe("Age");
+    expect(join("note_projects", "note_id", 6)).toEqual(["Age"]);
 
-    const rev = db
-      .prepare("SELECT scope, project FROM note_revisions WHERE id = 1")
-      .get() as { scope?: string; project?: string | null };
-    expect(rev.scope).toBe("project");
-    expect(rev.project).toBe("opencode-tools");
+    const rev = join("note_revision_projects", "revision_id", 1);
+    expect(rev).toEqual(["opencode-tools"]);
 
-    expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(8);
+    expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(9);
 
-    // New composite index present, old one dropped.
+    // 009 dropped the composite index and restored the scope-only one.
     const indexes = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'notes'")
       .all() as { name: string }[];
     const names = indexes.map((i) => i.name);
-    expect(names).toContain("idx_notes_scope_project");
-    expect(names).not.toContain("idx_notes_scope");
+    expect(names).toContain("idx_notes_scope");
+    expect(names).not.toContain("idx_notes_scope_project");
   });
 
-  test("re-opening an already-v8 database is idempotent", async () => {
+  test("re-opening an already-v9 database is idempotent", async () => {
     const db = legacyV7Db();
     initSchema(db);
     initSchema(db);
-    expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(8);
+    expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(9);
   });
 });
 
 /* ------------------------------------------------------------------ */
-/* addNote / updateNote (scope + project)                               */
+/* addNote / updateNote (scope + projects)                               */
 /* ------------------------------------------------------------------ */
 
-describe("addNote (scope + project)", () => {
-  test("project scope stores the absolute path", async () => {
+describe("addNote (scope + projects)", () => {
+  test("project scope stores the project paths (multi-project set)", async () => {
     const db = legacyV7Db();
     initSchema(db);
     const res = addNote(db, {
@@ -278,27 +281,38 @@ describe("addNote (scope + project)", () => {
       title: "t",
       content: "ok",
       scope: "project",
-      project: "/abs/path",
+      projects: ["/abs/path"],
     });
     expect(res.ok).toBe(true);
     expect(res.note!.scope).toBe("project");
-    expect(res.note!.project).toBe("/abs/path");
+    expect(res.note!.projects).toEqual(["/abs/path"]);
+
+    // several paths -> all stored (order-preserving, deduplicated)
+    const res2 = addNote(db, {
+      category: "decision",
+      title: "t2",
+      content: "ok",
+      scope: "project",
+      projects: ["/b", "/a", "/b"],
+    });
+    // Read order is deterministic (sorted), independent of insertion order.
+    expect(res2.note!.projects).toEqual(["/a", "/b"]);
   });
 
-  test("'global'/'all'/'none' -> 'all'; 'machine' discards any project", async () => {
+  test("'global'/'all'/'none' -> 'all'; 'machine' discards any projects", async () => {
     const db = legacyV7Db();
     initSchema(db);
 
-    const g = addNote(db, { category: "decision", title: "t", content: "ok", scope: "global", project: "/x" });
+    const g = addNote(db, { category: "decision", title: "t", content: "ok", scope: "global", projects: ["/x"] });
     expect(g.note!.scope).toBe("all");
-    expect(g.note!.project).toBeNull();
+    expect(g.note!.projects).toEqual([]);
 
-    const m = addNote(db, { category: "decision", title: "t", content: "ok", scope: "machine", project: "/y" });
+    const m = addNote(db, { category: "decision", title: "t", content: "ok", scope: "machine", projects: ["/y"] });
     expect(m.note!.scope).toBe("machine");
-    expect(m.note!.project).toBeNull();
+    expect(m.note!.projects).toEqual([]);
   });
 
-  test("legacy free-form 'project:X' fills the project column from the name", async () => {
+  test("project scope with no projects is rejected (v9 no longer fills paths from legacy 'project:X')", async () => {
     const db = legacyV7Db();
     initSchema(db);
     const res = addNote(db, {
@@ -307,8 +321,8 @@ describe("addNote (scope + project)", () => {
       content: "ok",
       scope: "project:age",
     });
-    expect(res.note!.scope).toBe("project");
-    expect(res.note!.project).toBe("age");
+    expect(res.ok).toBe(false);
+    expect((res as { error: string }).error).toContain("exige pelo menos um caminho de projeto");
   });
 
   test("no scope -> 'all'", async () => {
@@ -316,12 +330,12 @@ describe("addNote (scope + project)", () => {
     initSchema(db);
     const res = addNote(db, { category: "decision", title: "t", content: "ok" });
     expect(res.note!.scope).toBe("all");
-    expect(res.note!.project).toBeNull();
+    expect(res.note!.projects).toEqual([]);
   });
 });
 
-describe("updateNote (scope + project)", () => {
-  test("switching project -> machine clears the project path", async () => {
+describe("updateNote (scope + projects)", () => {
+  test("switching scope to 'machine' clears the project paths", async () => {
     const db = legacyV7Db();
     initSchema(db);
     const created = addNote(db, {
@@ -329,7 +343,7 @@ describe("updateNote (scope + project)", () => {
       title: "t",
       content: "ok",
       scope: "project",
-      project: "/abs/path",
+      projects: ["/abs/path"],
     });
     expect(created.ok).toBe(true);
     const id = created.note!.id;
@@ -337,10 +351,10 @@ describe("updateNote (scope + project)", () => {
     const res = updateNote(db, { id, scope: "machine" });
     expect(res.ok).toBe(true);
     expect(res.note!.scope).toBe("machine");
-    expect(res.note!.project).toBeNull();
+    expect(res.note!.projects).toEqual([]);
   });
 
-  test("updating the project path works, and project -> project keeps it", async () => {
+  test("updating the project paths works, and project -> project keeps the type", async () => {
     const db = legacyV7Db();
     initSchema(db);
     const created = addNote(db, {
@@ -348,17 +362,23 @@ describe("updateNote (scope + project)", () => {
       title: "t",
       content: "ok",
       scope: "project",
-      project: "/old/path",
+      projects: ["/old/path"],
     });
     const id = created.note!.id;
 
-    const res = updateNote(db, { id, project: "/new/path" });
+    // no scope passed: existing project scope is preserved, set replaced
+    const res = updateNote(db, { id, projects: ["/new/path"] });
     expect(res.ok).toBe(true);
     expect(res.note!.scope).toBe("project");
-    expect(res.note!.project).toBe("/new/path");
+    expect(res.note!.projects).toEqual(["/new/path"]);
+
+    const res2 = updateNote(db, { id, projects: ["/b", "/a", "/b"] });
+    expect(res2.ok).toBe(true);
+    // Read order is deterministic (sorted), independent of insertion order.
+    expect(res2.note!.projects).toEqual(["/a", "/b"]);
   });
 
-  test("a revision snapshot keeps the previous (scope, project) pair", async () => {
+  test("switching to 'all' clears paths; the revision snapshot keeps the old set", async () => {
     const db = legacyV7Db();
     initSchema(db);
     const created = addNote(db, {
@@ -366,18 +386,18 @@ describe("updateNote (scope + project)", () => {
       title: "t",
       content: "ok",
       scope: "project",
-      project: "/old/path",
+      projects: ["/old/path", "/other/path"],
     });
     const id = created.note!.id;
 
     const res = updateNote(db, { id, scope: "all" });
     expect(res.ok).toBe(true);
     expect(res.note!.scope).toBe("all");
-    expect(res.note!.project).toBeNull();
+    expect(res.note!.projects).toEqual([]);
 
     const history = noteHistory(db, id);
     expect(history?.revisions.length).toBeGreaterThan(0);
     expect(history?.revisions[0].scope).toBe("project");
-    expect(history?.revisions[0].project).toBe("/old/path");
+    expect(history?.revisions[0].projects).toEqual(["/old/path", "/other/path"]);
   });
 });

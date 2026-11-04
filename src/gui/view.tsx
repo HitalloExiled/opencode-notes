@@ -22,7 +22,9 @@ import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
 import {
   applyFilters,
   filterByQuery,
+  noteMatchesScope,
   pruneSelection,
+  scopeKeysOf,
   scopeOf,
   tagsOf,
 } from "./filters"
@@ -49,8 +51,11 @@ type FormState = {
   tags: string
   author: string
   scope: "all" | "machine" | "project"
-  /** Absolute project path; only used when `scope` is `"project"`. */
-  project: string
+  /**
+   * Absolute project paths; used only when `scope` is `"project"`. One or
+   * more for multi-project notes.
+   */
+  projects: string[]
 }
 
 const defaultForm: FormState = {
@@ -61,7 +66,7 @@ const defaultForm: FormState = {
   tags: "",
   author: "",
   scope: "all",
-  project: "",
+  projects: [],
 }
 
 /* ------------------------------------------------------------------ */
@@ -92,7 +97,7 @@ type MultiSelectProps = {
   // function (always truthy) instead of its boolean, so the panel would be
   // stuck open.
   openFilter: Accessor<string | null>
-  which: "scope" | "tag" | "category"
+  which: "scope" | "tag" | "category" | "project"
   onOpenChange: () => void
 }
 
@@ -243,9 +248,9 @@ export function NotesView() {
   // falls back to the raw value for categories outside the known list).
   const categoryLabel = (v: string): string => t(`category.${v}`, v)
 
-  // Short scope chip: localized type names; the project name is data and
-  // is never translated.
-  const noteScopeLabel = (n: Note): string => scopeChipLabel(t, n.scope, n.project)
+  // Short scope chip: localized type names; the project data is never
+  // translated.
+  const noteScopeLabel = (n: Note): string => scopeChipLabel(t, n.scope, n.projects)
 
   // Scope filter option label: same idea as the chip, driven by the raw
   // option value ("all" / "machine" / "project" / a project path). Type
@@ -272,6 +277,9 @@ export function NotesView() {
   const [selectedId, setSelectedId] = createSignal<number | null>(null)
   const [detail, setDetail] = createSignal<NoteDetail | null>(null)
   const [revisionsOpen, setRevisionsOpen] = createSignal(false)
+  // Independent open-state for the form's project combo (the main filter
+  // combos share `openFilter`, but the floating form shouldn't fight them).
+  const [formProjectOpen, setFormProjectOpen] = createSignal<string | null>(null)
   const [error, setError] = createSignal("")
   const [loading, setLoading] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
@@ -363,7 +371,7 @@ export function NotesView() {
       // reading these signals would re-run `loadNotes` and loop forever.
       const arraysSame = (a: readonly string[], b: readonly string[]): boolean =>
         a.length === b.length && a.every((v, i) => v === b[i])
-      const nextScope = scope.filter((s) => all.some((n) => scopeOf(n) === s))
+      const nextScope = scope.filter((s) => all.some((n) => noteMatchesScope(n, s)))
       const nextTag = tag.filter((t) => all.some((n) => tagsOf(n).includes(t)))
       if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
       if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
@@ -394,7 +402,7 @@ export function NotesView() {
   // Keep the multi-select filters pointing only at values that still exist,
   // so deleting a note can't leave a phantom selection. Cheap: no fetch.
   createEffect(() => {
-    const existsScope = (s: string) => allNotes().some((n) => scopeOf(n) === s)
+    const existsScope = (s: string) => allNotes().some((n) => noteMatchesScope(n, s))
     const existsTag = (t: string) => allNotes().some((n) => tagsOf(n).includes(t))
     const nextScope = pruneSelection(scopeFilter(), existsScope)
     const nextTag = pruneSelection(tagFilter(), existsTag)
@@ -409,15 +417,26 @@ export function NotesView() {
   })
 
   // Filter choices come from the unfiltered snapshot, so picking one scope or
-  // tag never removes the others from the dropdown. The key is the type
-  // ("all" / "machine") or the absolute project path — so notes in the same
-  // project group under a single option.
+  // tag never removes the others from the dropdown. A project-scoped note
+  // contributes one key per project path, so all its projects appear as
+  // distinct options.
   const scopeOptions = createMemo(() =>
-    [...new Set(allNotes().map(scopeOf))].sort((a, b) => a.localeCompare(b))
+    [...new Set(allNotes().flatMap((n) => scopeKeysOf(n)))].sort((a, b) => a.localeCompare(b))
   )
   const tagOptions = createMemo(() =>
     [...new Set(allNotes().flatMap(tagsOf))].sort((a, b) => a.localeCompare(b))
   )
+  // Options for the form's project multi-select: every distinct project path
+  // seen in the notes plus the current session's project, so the auto-filled
+  // value is always selectable.
+  const projectOptions = createMemo(() => {
+    const paths = new Set<string>(
+      allNotes().filter((n) => n.scope === "project").flatMap((n) => n.projects),
+    )
+    const current = currentProjectPath()
+    if (current.trim()) paths.add(current.trim())
+    return [...paths].sort((a, b) => a.localeCompare(b))
+  })
 
   const reloadSelected = async (id: number | null) => {
     if (id === null) {
@@ -474,9 +493,9 @@ export function NotesView() {
       return
     }
     const content = f.content.trim()
-    // (scope, project) are a pair: the path only travels with project scope.
-    const project =
-      f.scope === "project" && f.project.trim() ? f.project.trim() : undefined
+    // (scope, projects) are a pair: the project set only travels with project
+    // scope; for other scopes it is omitted so the store clears it.
+    const projects = f.scope === "project" ? f.projects : undefined
     setSaving(true)
     try {
       const res =
@@ -488,7 +507,7 @@ export function NotesView() {
               tags: f.tags.trim() || undefined,
               author: f.author.trim() || undefined,
               scope: f.scope,
-              project,
+              projects,
             })
           : await api.update({
               id: f.id as number,
@@ -497,7 +516,7 @@ export function NotesView() {
               tags: f.tags.trim() || undefined,
               category: f.category,
               scope: f.scope,
-              project,
+              projects,
             })
       if (res.ok) {
         setFormOpen(false)
@@ -529,7 +548,7 @@ export function NotesView() {
     setForm({
       ...defaultForm,
       author,
-      project: currentProjectPath(),
+      projects: currentProjectPath().trim() ? [currentProjectPath().trim()] : [],
     })
     setFormOpen(true)
   }
@@ -544,7 +563,7 @@ export function NotesView() {
       tags: n.tags || "",
       author: n.author || "",
       scope: n.scope ? (n.scope as FormState["scope"]) : "all",
-      project: n.project || "",
+      projects: n.projects ? [...n.projects] : [],
     })
     setFormOpen(true)
   }
@@ -666,7 +685,7 @@ export function NotesView() {
     const meta = [
       String(n.category),
       n.scope && n.scope !== "all"
-        ? `scope: ${n.scope}${n.project ? ` (${n.project})` : ""}`
+        ? `scope: ${n.scope}${n.projects.length ? ` (${n.projects.join(", ")})` : ""}`
         : "",
       n.tags ? `tags: ${n.tags}` : "",
       n.author ? `author: ${n.author}` : "",
@@ -771,7 +790,13 @@ export function NotesView() {
           <Show when={noteScopeLabel(n)}>
             <span
               class="tag tag-scope"
-              title={n.scope === "project" ? (n.project ?? t("scopeProject")) : noteScopeLabel(n)}
+              title={
+                n.scope === "project"
+                  ? n.projects.length
+                    ? n.projects.join(", ")
+                    : t("scopeProject")
+                  : noteScopeLabel(n)
+              }
             >
               {noteScopeLabel(n)}
             </span>
@@ -798,7 +823,7 @@ export function NotesView() {
             </Show>
             <Show when={noteScopeLabel(n)}>
               <span class="tag tag-scope">
-                {t("meta.scope", noteScopeLabel(n))}{n.scope === "project" && n.project ? ` · ${n.project}` : ""}
+                {t("meta.scope", noteScopeLabel(n))}{n.scope === "project" && n.projects.length ? ` · ${n.projects.join(", ")}` : ""}
               </span>
             </Show>
             {tagChips(n)}
@@ -1454,15 +1479,15 @@ export function NotesView() {
                 value={form().scope}
                 onChange={(e) => {
                   const scope = e.currentTarget.value as FormState["scope"]
-                  // When switching to `project`, fill in the current session's
-                  // path if the field is still empty.
+                  // When switching to `project`, seed the current session's
+                  // path if no project is selected yet.
                   setForm((s) => ({
                     ...s,
                     scope,
-                    project:
-                      scope === "project" && !s.project.trim()
-                        ? currentProjectPath()
-                        : s.project,
+                    projects:
+                      scope === "project" && s.projects.length === 0
+                        ? [currentProjectPath()].filter(Boolean)
+                        : s.projects,
                   }))
                 }}
               >
@@ -1473,15 +1498,19 @@ export function NotesView() {
             </label>
           </div>
           <Show when={form().scope === "project"}>
-            <label>
-              {t("form.project.label")}
-              <ctx.ui.TextInput
-                label={t("form.project.label")}
-                placeholder={t("form.project.placeholder")}
-                value={form().project}
-                onInput={(v) => setForm((s) => ({ ...s, project: v }))}
-              />
-            </label>
+            <MultiSelect
+              label={t("form.project.label")}
+              placeholder={t("form.project.placeholder")}
+              options={projectOptions()}
+              display={scopeOptionLabel}
+              value={() => form().projects}
+              onValueChange={(v) => setForm((s) => ({ ...s, projects: v }))}
+              openFilter={formProjectOpen}
+              which="project"
+              onOpenChange={() =>
+                setFormProjectOpen((v) => (v === "project" ? null : "project"))
+              }
+            />
           </Show>
           <label>
             {t("form.tags.label")}

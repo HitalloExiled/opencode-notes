@@ -15,8 +15,10 @@ import {
   applyFilters,
   displayOf,
   filterByQuery,
+  noteMatchesScope,
   pruneSelection,
   scopeLabel,
+  scopeKeysOf,
   scopeOf,
   tagsOf,
 } from "../src/gui/filters";
@@ -29,6 +31,7 @@ function note(partial: Partial<Note> = {}): Note {
     title: "t",
     content: "c",
     pinned: false,
+    projects: [],
     ...partial,
   };
 }
@@ -54,10 +57,10 @@ describe("tagsOf", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* scopeOf / scopeLabel                                                 */
+/* scopeOf / scopeKeysOf / noteMatchesScope / scopeLabel                */
 /* ------------------------------------------------------------------ */
 
-describe("scopeOf", () => {
+describe("scopeOf (first filter key)", () => {
   test("no scope / 'all' -> 'all'", () => {
     expect(scopeOf(note({ scope: undefined }))).toBe("all");
     expect(scopeOf(note({ scope: "all" }))).toBe("all");
@@ -67,12 +70,47 @@ describe("scopeOf", () => {
     expect(scopeOf(note({ scope: "machine" }))).toBe("machine");
   });
 
-  test("'project' with a path -> the path", () => {
-    expect(scopeOf(note({ scope: "project", project: "/a/b/c" }))).toBe("/a/b/c");
+  test("'project' with paths -> the first path is its key", () => {
+    expect(scopeOf(note({ scope: "project", projects: ["/a/b/c", "/x/y"] }))).toBe("/a/b/c");
   });
 
-  test("'project' without a path -> 'project' fallback", () => {
-    expect(scopeOf(note({ scope: "project" }))).toBe("project");
+  test("'project' without paths -> 'project' fallback", () => {
+    expect(scopeOf(note({ scope: "project", projects: [] }))).toBe("project");
+  });
+});
+
+describe("scopeKeysOf (every filter key; multi-project aware)", () => {
+  test("non-project scopes -> a single key", () => {
+    expect(scopeKeysOf(note({ scope: undefined }))).toEqual(["all"]);
+    expect(scopeKeysOf(note({ scope: "all" }))).toEqual(["all"]);
+    expect(scopeKeysOf(note({ scope: "machine" }))).toEqual(["machine"]);
+  });
+
+  test("'project' with paths -> one key per project path", () => {
+    expect(scopeKeysOf(note({ scope: "project", projects: ["/a/b/c", "/x/y"] }))).toEqual(["/a/b/c", "/x/y"]);
+  });
+
+  test("'project' without paths -> the 'project' fallback key", () => {
+    expect(scopeKeysOf(note({ scope: "project", projects: [] }))).toEqual(["project"]);
+  });
+});
+
+describe("noteMatchesScope (a note matches an option iff the option is one of its keys)", () => {
+  test("a multi-project note matches each of its projects — and nothing else", () => {
+    const n = note({ scope: "project", projects: ["/a/b/c", "/x/y"] });
+    expect(noteMatchesScope(n, "/a/b/c")).toBe(true);
+    expect(noteMatchesScope(n, "/x/y")).toBe(true);
+    expect(noteMatchesScope(n, "/nope")).toBe(false);
+    expect(noteMatchesScope(n, "all")).toBe(false);
+    expect(noteMatchesScope(n, "machine")).toBe(false);
+    expect(noteMatchesScope(n, "project")).toBe(false);
+  });
+
+  test("single-key notes match only their own option", () => {
+    expect(noteMatchesScope(note({ scope: "machine" }), "machine")).toBe(true);
+    expect(noteMatchesScope(note({ scope: "machine" }), "all")).toBe(false);
+    expect(noteMatchesScope(note({ scope: "project", projects: [] }), "project")).toBe(true);
+    expect(noteMatchesScope(note({ scope: "project", projects: [] }), "/a/b/c")).toBe(false);
   });
 });
 
@@ -86,15 +124,19 @@ describe("scopeLabel", () => {
     expect(scopeLabel(note({ scope: "machine" }))).toBe("machine");
   });
 
-  test("'project' -> basename of the path (full path via title)", () => {
-    expect(scopeLabel(note({ scope: "project", project: "/home/user/dev/app" }))).toBe(
-      "app",
+  test("'project' -> basename of the path", () => {
+    expect(scopeLabel(note({ scope: "project", projects: ["/home/user/dev/app"] }))).toBe("app");
+    expect(scopeLabel(note({ scope: "project", projects: ["/a/b"] }))).toBe("b");
+  });
+
+  test("'project' with several paths -> basenames joined", () => {
+    expect(scopeLabel(note({ scope: "project", projects: ["/home/user/dev/app", "/srv/apps/b"] }))).toBe(
+      "app · b",
     );
-    expect(scopeLabel(note({ scope: "project", project: "/a/b" }))).toBe("b");
   });
 
   test("'project' without a path -> 'project'", () => {
-    expect(scopeLabel(note({ scope: "project" }))).toBe("project");
+    expect(scopeLabel(note({ scope: "project", projects: [] }))).toBe("project");
   });
 });
 
@@ -109,18 +151,21 @@ describe("scopeLabel", () => {
 //   5   -> "all"
 //   6   -> undefined -> "all"
 //   7   -> "project" without a path -> "project"
+const INFRA = "/home/user/dev/agentic-dev-infra";
+const TOOLS = "/srv/apps/opencode-tools";
+
 const base: Note[] = [
   note({
     id: 1,
     scope: "project",
-    project: "/home/user/dev/agentic-dev-infra",
+    projects: [INFRA],
     tags: "x y",
     category: "problem",
   }),
   note({
     id: 2,
     scope: "project",
-    project: "/srv/apps/opencode-tools",
+    projects: [TOOLS],
     tags: "z",
     category: "decision",
   }),
@@ -128,7 +173,7 @@ const base: Note[] = [
     id: 3,
     pinned: true,
     scope: "project",
-    project: "/home/user/dev/agentic-dev-infra",
+    projects: [INFRA],
     tags: "y z3",
     category: "config",
   }),
@@ -139,20 +184,23 @@ const base: Note[] = [
 ];
 
 const ALL = base.map((n) => n.id); // [1..7]
-const INFRA = "/home/user/dev/agentic-dev-infra";
-const TOOLS = "/srv/apps/opencode-tools";
 
-// ids returned when filtering `base` by the given chips (retracted hidden,
-// the default main-list state). Keeps assertions flat and readable.
-function idsOf(p: {
-  scope?: string[];
-  tag?: string[];
-  category?: string[];
-  pinnedOnly?: boolean;
-  projectOnly?: boolean;
-  projectPath?: string;
-}) {
-  return applyFilters(base, {
+// ids returned when filtering `notes` by the given chips (retracted hidden,
+// the default main-list state). Defaults to the single-project `base`;
+// pass a fixture explicitly for the multi-project section below. Keeps
+// assertions flat and readable.
+function idsOf(
+  p: {
+    scope?: string[];
+    tag?: string[];
+    category?: string[];
+    pinnedOnly?: boolean;
+    projectOnly?: boolean;
+    projectPath?: string;
+  },
+  notes: Note[] = base,
+) {
+  return applyFilters(notes, {
     scope: p.scope ?? [],
     tag: p.tag ?? [],
     category: p.category ?? [],
@@ -252,6 +300,46 @@ describe("applyFilters (scope / tag / category / pinned)", () => {
     expect(idsOf({ projectOnly: true, projectPath: INFRA, category: ["decision"] })).toEqual([]);
     // combined with a conflicting scope selection (AND)
     expect(idsOf({ projectOnly: true, projectPath: INFRA, scope: [TOOLS] })).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* applyFilters — multi-project (a note can hold several projects)      */
+/* ------------------------------------------------------------------ */
+
+// Note 8 belongs to BOTH projects at once: it must appear in *each* of their
+// filters, exactly once, in fixture order.
+const multiBase: Note[] = [
+  ...base,
+  note({
+    id: 8,
+    scope: "project",
+    projects: [INFRA, TOOLS],
+    tags: "m",
+    category: "decision",
+  }),
+];
+
+describe("applyFilters (multi-project)", () => {
+  test("a multi-project note shows up under each project's projectOnly filter", () => {
+    expect(idsOf({ projectOnly: true, projectPath: INFRA }, multiBase)).toEqual([1, 3, 8]);
+    expect(idsOf({ projectOnly: true, projectPath: TOOLS }, multiBase)).toEqual([2, 8]);
+  });
+
+  test("a scope option matches every note that carries it as a key", () => {
+    expect(idsOf({ scope: [TOOLS] }, multiBase)).toEqual([2, 8]);
+    expect(idsOf({ scope: [INFRA] }, multiBase)).toEqual([1, 3, 8]);
+    // multi-select: union; the multi-project note appears once, in base order
+    // (note 2 is TOOLS, before note 3, so the order is 1, 2, 3, 8)
+    expect(idsOf({ scope: [INFRA, TOOLS] }, multiBase)).toEqual([1, 2, 3, 8]);
+    // adding "machine" + "all" brings in notes 4, 5, 6 — which sit before
+    // note 8 in base order (note 8 is appended last to multiBase)
+    expect(idsOf({ scope: [INFRA, TOOLS, "machine", "all"] }, multiBase)).toEqual([1, 2, 3, 4, 5, 6, 8]);
+  });
+
+  test("a multi-project note is invisible to non-project filters", () => {
+    expect(idsOf({ scope: ["machine", "all"] }, multiBase)).toEqual([4, 5, 6]);
+    expect(idsOf({ projectOnly: false }, multiBase)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 });
 

@@ -86,7 +86,7 @@ Solution: <what fixed it, reproducible>
 Files: <paths touched, optional>
 ```
 
-**Scope is a field on the call, not a line in the content.** Pass `scope` to `notes.add` as `project`, `machine`, or leave it out (default = `all`/`global`, i.e. machine-independent). When `scope` is `project`, also pass `project` as the absolute project path (no spaces). The legacy `project:<name>` value inside `scope`, and any `Scope:` line in the content, are no longer accepted.
+**Scope is a field on the call, not a line in the content.** Pass `scope` to `notes.add` as `project`, `machine`, or leave it out (default = `all`/`global`, i.e. machine-independent). When `scope` is `project`, also pass `projects` as an array with one or more absolute project paths (no spaces; a single note can be tied to several projects at once). The legacy `project:<name>` value inside `scope`, and any `Scope:` line in the content, are no longer accepted.
 
 Rules:
 
@@ -173,7 +173,7 @@ get `retract`. `update` stays reserved for genuine corrections.
 
 - **Categories**: `#problem`, `#decision`, `#config`, `#snippet`, `#architecture`, `#user`, `#general`.
 - **User notes (`#user`)**: facts about the user (name, how to address them, preferences, standing context, goals, projects, working style). Always scope `machine` (matches every machine, so it is injectable when pinned) — never `global`, which is excluded from injection. The agent pins only the ones that matter across sessions, against the fixed 12-pin budget; unpinned user notes stay searchable via `notes.search`.
-- **Scope** (a field on `notes.add`, not a line in the content): how far the fact applies — `global`/`all` (machine-independent; the default, may be omitted), `machine`, or `project`. When `scope` is `project` also pass `project` as the absolute project path (no spaces). Scope is orthogonal to category and tags: it tells a reader on another machine *where* the fact applies, not whether it should have been registered at all.
+- **Scope** (a field on `notes.add`, not a line in the content): how far the fact applies — `global`/`all` (machine-independent; the default, may be omitted), `machine`, or `project`. When `scope` is `project` also pass `projects` as an array with one or more absolute project paths (no spaces; a single note can be tied to several projects). Scope is orthogonal to category and tags: it tells a reader on another machine *where* the fact applies, not whether it should have been registered at all.
 - **Tags**: keywords separated by space, without `#` (e.g.: `selinux module`).
 - **Title**: short and specific — for problems, describe the symptom (e.g. "sandbox TUI fails without exec on /tmp").
 - **Author**: who registered the note (`author` on `notes.add`). Agents pass their own name; humans registering from the panel pass theirs. Set at creation, never changed by `update`; shown as `(by <author>)` in search/list/view.

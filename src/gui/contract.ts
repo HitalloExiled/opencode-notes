@@ -23,10 +23,11 @@ export type Note = {
   tags?: string | undefined
   scope?: string | undefined
   /**
-   * Absolute project path. Only populated when `scope` is `"project"`;
-   * otherwise `undefined`.
+   * Absolute project paths. Non-empty only when `scope` is `"project"`;
+   * one or more paths for project-scoped notes (multi-project support), empty
+   * array for `"all"`/`"machine"` scopes.
    */
-  project?: string | undefined
+  projects: readonly string[]
   title: string
   content: string
   author?: string | undefined
@@ -45,9 +46,10 @@ export type Revision = {
   tags?: string | undefined
   scope?: string | undefined
   /**
-   * Absolute project path. Only populated when `scope` is `"project"`.
+   * Absolute project paths (from the `note_revision_projects` join table).
+   * Non-empty only when `scope` is `"project"`.
    */
-  project?: string | undefined
+  projects: readonly string[]
   title: string
   content: string
 }
@@ -93,9 +95,10 @@ export type AddInput = {
    */
   scope?: string | undefined
   /**
-   * Absolute project path, used when `scope` is `"project"`.
+   * Absolute project paths, used when `scope` is `"project"`. One or more
+   * paths (multi-project); empty/omitted for other scopes.
    */
-  project?: string | undefined
+  projects?: readonly string[]
 }
 
 export type UpdateInput = {
@@ -109,9 +112,10 @@ export type UpdateInput = {
    */
   scope?: string | undefined
   /**
-   * Absolute project path, used when `scope` is `"project"`.
+   * Absolute project paths, used when `scope` is `"project"`. One or more
+   * paths (multi-project); omit to keep the current set, `[]` to clear.
    */
-  project?: string | undefined
+  projects?: readonly string[]
 }
 
 export type DisputeInput = {
@@ -147,7 +151,7 @@ export const noteSchema = Schema.Struct({
   category: Schema.String,
   tags: optString,
   scope: optString,
-  project: optString,
+  projects: Schema.Array(Schema.String),
   title: Schema.String,
   content: Schema.String,
   author: optString,
@@ -165,7 +169,7 @@ export const revisionSchema = Schema.Struct({
   category: Schema.String,
   tags: optString,
   scope: optString,
-  project: optString,
+  projects: Schema.Array(Schema.String),
   title: Schema.String,
   content: Schema.String,
 })
@@ -210,7 +214,7 @@ export const addInputSchema = Schema.Struct({
   tags: optString,
   author: optString,
   scope: optString,
-  project: optString,
+  projects: Schema.optional(Schema.Array(Schema.String)),
 })
 
 export const updateInputSchema = Schema.Struct({
@@ -220,7 +224,7 @@ export const updateInputSchema = Schema.Struct({
   tags: optString,
   category: optString,
   scope: optString,
-  project: optString,
+  projects: Schema.optional(Schema.Array(Schema.String)),
 })
 
 export const disputeInputSchema = Schema.Struct({

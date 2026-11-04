@@ -56,7 +56,7 @@ const toNote = (r: NoteRow): Note => ({
   content: r.content,
   tags: r.tags ?? undefined,
   scope: r.scope ?? undefined,
-  project: r.project ?? undefined,
+  projects: r.projects,
   author: r.author ?? undefined,
   verifiedAt: r.verified_at ?? undefined,
   disputedAt: r.disputed_at ?? undefined,
@@ -72,7 +72,7 @@ const toRevision = (r: RevisionRow): NoteDetail["revisions"][number] => ({
   category: r.category,
   tags: r.tags ?? undefined,
   scope: r.scope ?? undefined,
-  project: r.project ?? undefined,
+  projects: r.projects,
   title: r.title,
   content: r.content,
 })
