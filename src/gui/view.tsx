@@ -861,7 +861,7 @@ export function NotesView() {
           <div class="revisions">
             <button class="btn-app" onClick={() => setRevisionsOpen(!revisionsOpen())}>
               <ctx.ui.Icon name="outline-rotate-clockwise" size="small" />
-              t("revisions.label"){revs().length > 0 ? ` · ${revs().length}` : ""}
+              {t("revisions.label")}{revs().length > 0 ? ` · ${revs().length}` : ""}
             </button>
             <Show when={revisionsOpen()}>
               <div class="rev-list">
@@ -871,7 +871,7 @@ export function NotesView() {
                 {revs().map((r) => (
                   <div class="rev">
                     <div class="rev-head">
-                      t("revisions.head", r.id, formatTime(r.revisedAt), formatTime(r.timestamp))
+                      {t("revisions.head", r.id, formatTime(r.revisedAt), formatTime(r.timestamp))}
                     </div>
                     <pre class="note-content small">{r.content}</pre>
                     <button class="btn-app" onClick={() => restore(r)}>
@@ -1544,30 +1544,30 @@ export function NotesView() {
             <ctx.ui.Icon name="file-document" size="large" class="empty-icon" />
             <div>
               <Show when={query().trim()}>
-                t("empty.search", query().trim())
+                {t("empty.search", query().trim())}
               </Show>
               <Show when={!query().trim() && showRetracted()}>
-                t("empty.retracted")
+                {t("empty.retracted")}
               </Show>
               <Show when={!query().trim() && !showRetracted() && projectOnly()}>
-                t("empty.project")
+                {t("empty.project")}
               </Show>
               <Show when={!query().trim() && !showRetracted() && !projectOnly()}>
-                t("empty.none")
+                {t("empty.none")}
               </Show>
             </div>
             <div class="muted">
               <Show when={query().trim()}>
-                t("empty.hint.search")
+                {t("empty.hint.search")}
               </Show>
               <Show when={!query().trim() && showRetracted()}>
-                t("empty.hint.retracted")
+                {t("empty.hint.retracted")}
               </Show>
               <Show when={!query().trim() && !showRetracted() && projectOnly()}>
-                t("empty.hint.project")
+                {t("empty.hint.project")}
               </Show>
               <Show when={!query().trim() && !showRetracted() && !projectOnly()}>
-                t("empty.hint.none")
+                {t("empty.hint.none")}
               </Show>
             </div>
           </div>
@@ -1586,7 +1586,7 @@ export function NotesView() {
           >
             {t("page.previous")}
           </ctx.ui.Button>
-          <span class="page-label">t("page.label", page() + 1, pageCount())</span>
+          <span class="page-label">{t("page.label", page() + 1, pageCount())}</span>
           <ctx.ui.Button
             size="small"
             variant="ghost-muted"
