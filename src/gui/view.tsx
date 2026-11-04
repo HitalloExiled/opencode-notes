@@ -835,7 +835,6 @@ export function NotesView() {
       </div>
       <Show when={tagsOf(n).length > 0 || noteScopeLabel(n)}>
         <div class="note-pills">
-          {tagChips(n, 2)}
           <Show when={noteScopeLabel(n)}>
             <span
               class="tag tag-scope"
@@ -850,6 +849,7 @@ export function NotesView() {
               {noteScopeLabel(n)}
             </span>
           </Show>
+          {tagChips(n, 2)}
         </div>
       </Show>
       <Show when={selectedId() === n.id}>
