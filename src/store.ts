@@ -376,6 +376,13 @@ function backfillScopeColumn(db: Db): void {
   }
 }
 
+/** Returns true when `table` has a column named `column` (used to decide whether
+ * a migration that touches that column still needs to run). */
+function hasColumn(db: Db, table: string, column: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>
+  return rows.some((r) => r.name === column)
+}
+
 export function initSchema(db: Db): void {
   apply(db, BASE_SCHEMA)
   if (ftsSupported(db)) apply(db, FTS_SCHEMA)
@@ -407,7 +414,13 @@ export function initSchema(db: Db): void {
   // v9 multi-project: move the single `project` column into join tables and
   // drop the columns. Same transactional care as 008 so a failure never leaves
   // the database half-migrated.
-  if (current < 9) {
+  //
+  // The migration is only run while the legacy `project` column still exists.
+  // A database already upgraded to the v9 structure (join tables present, `project`
+  // column already dropped) is left alone: re-running 009 would reference a
+  // column that no longer exists ("no such column: project"). Bumping
+  // `user_version` to SCHEMA_VERSION below is then all that remains.
+  if (current < 9 && hasColumn(db, "notes", "project")) {
     try {
       db.prepare("BEGIN").run()
       apply(db, MIGRATION_009)

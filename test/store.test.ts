@@ -266,6 +266,52 @@ describe("MIGRATION_008 + 009 (scope type, project column -> join tables)", () =
     initSchema(db);
     expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(9);
   });
+
+  test("v9-structure DB with a stale user_version=8 re-opens cleanly (009 no-op)", async () => {
+    // Regression for the live crash:
+    //   sqlite indisponível: no such column: project
+    // A DB already upgraded to v9 (join tables present, `project` column
+    // dropped) can be left with a *stale* user_version (< 9) if an older
+    // (SCHEMA_VERSION = 8) process wrote it last. The previous code then
+    // re-ran migration 009, which references the already-dropped `project`
+    // column and crashed. With the `hasColumn` guard, 009 is skipped and the
+    // trailing `PRAGMA user_version = SCHEMA_VERSION` stamps it correctly.
+    const db = emptyDb();
+    initSchema(db); // v9 structure (no `project` col, join tables), user_version 9
+
+    // Seed a project-scope note so the join table carries real data; a
+    // properly migrated v9 DB has data here, so we assert it survives (lossless).
+    addNote(db, {
+      category: "decision",
+      title: "v9-seed",
+      content: "seed",
+      scope: "project",
+      projects: ["/abs/v9-project"],
+    });
+
+    // Simulate the stale stamp: a previous v8-scoped process reset it to 8.
+    db.prepare("PRAGMA user_version = 8").run();
+
+    // Re-open (upgrade). Before the guard this threw "no such column: project".
+    expect(() => initSchema(db)).not.toThrow();
+
+    // 009 was a no-op: the `project` column is still absent.
+    const cols = (
+      db.prepare("PRAGMA table_info(notes)")
+        .all() as { name: string }[]
+    ).map((c) => c.name);
+    expect(cols).not.toContain("project");
+
+    // Join-table data survived the re-open (lossless).
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM note_projects").get() as { c: number }).c
+    ).toBe(1);
+
+    // Version stamped to the latest (9).
+    expect((db.prepare("PRAGMA user_version").get() as { user_version?: number }).user_version).toBe(
+      9,
+    );
+  });
 });
 
 /* ------------------------------------------------------------------ */
