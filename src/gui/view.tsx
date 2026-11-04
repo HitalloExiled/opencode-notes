@@ -416,6 +416,34 @@ export function NotesView() {
     if (page() > maxPage) setPage(maxPage)
   })
 
+  // Projects come from opencode itself: the server's project list (every
+  // project we've ever worked on, fetched over the official `client.project.list()`
+  // API). Re-runs when the open-tab set changes — a project row is created the
+  // first time a session opens there. Falls back to [] when the API is
+  // unavailable, so the dropdown still shows the note/current projects below.
+  const [opencodeProjects, setOpencodeProjects] = createSignal<string[]>([])
+  let opencodeProjectsGen = 0
+  createEffect(() => {
+    ctx.sessions.list() // reactive source: re-fetch when the tab set changes
+    const gen = ++opencodeProjectsGen
+    ctx.client.project.list().then(
+      (projects) => {
+        if (gen !== opencodeProjectsGen) return
+        setOpencodeProjects(
+          projects
+            .map((p) => p.canonical)
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b)),
+        )
+      },
+      (e) => {
+        if (gen !== opencodeProjectsGen) return
+        console.error("[notes] client.project.list() failed:", e)
+        setOpencodeProjects([])
+      },
+    )
+  })
+
   // Filter choices come from the unfiltered snapshot, so picking one scope or
   // tag never removes the others from the dropdown. A project-scoped note
   // contributes one key per project path, so all its projects appear as
@@ -426,13 +454,15 @@ export function NotesView() {
   const tagOptions = createMemo(() =>
     [...new Set(allNotes().flatMap(tagsOf))].sort((a, b) => a.localeCompare(b))
   )
-  // Options for the form's project multi-select: every distinct project path
-  // seen in the notes plus the current session's project, so the auto-filled
-  // value is always selectable.
+  // Options for the form's project multi-select: the union of opencode's
+  // projects (every project we work on), the projects the notes reference
+  // (so a project whose notes outlive it stays selectable), and the current
+  // session's project — so the auto-filled value is always selectable.
   const projectOptions = createMemo(() => {
-    const paths = new Set<string>(
-      allNotes().filter((n) => n.scope === "project").flatMap((n) => n.projects),
-    )
+    const paths = new Set<string>([
+      ...opencodeProjects(),
+      ...allNotes().filter((n) => n.scope === "project").flatMap((n) => n.projects),
+    ])
     const current = currentProjectPath()
     if (current.trim()) paths.add(current.trim())
     return [...paths].sort((a, b) => a.localeCompare(b))
