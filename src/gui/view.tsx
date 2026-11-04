@@ -831,15 +831,15 @@ export function NotesView() {
           {alertBadges(n)}
           <ctx.ui.Icon name="chevron-right" size="small" class="chevron" />
         </button>
-        <ctx.ui.Tooltip value={t("actions.attachTooltip")}>
-          <ctx.ui.IconButton
-            class="note-attach"
-            icon="plus"
-            label={t("actions.attach", n.id)}
-            size="small"
-            onClick={() => addToContext(n)}
-          />
-        </ctx.ui.Tooltip>
+        <ctx.ui.Button
+          class="note-attach"
+          size="small"
+          variant="ghost-muted"
+          icon="plus"
+          onClick={() => addToContext(n)}
+        >
+          {t("actions.attachTooltip")}
+        </ctx.ui.Button>
       </div>
       <Show when={tagsOf(n).length > 0 || noteScopeLabel(n)}>
         <div class="note-pills">
