@@ -86,6 +86,10 @@ type MultiSelectProps = {
   // Optional display mapping (e.g. category value -> pt-BR label). Selections
   // always store the raw option values; `display` only affects what is shown.
   display?: (opt: string) => string
+  // Optional native tooltip (HTML `title`) per item, to reveal data that the
+  // display label shortens (the full project path behind its basename). Return
+  // `undefined` to suppress the hint for that item.
+  optionTitle?: (opt: string) => string | undefined
   // Live selection as a reactive accessor (not a snapshot array): this makes
   // checked={value().includes(opt)} a tracked getter that re-syncs the DOM
   // whenever the selection changes, instead of going stale.
@@ -216,7 +220,7 @@ function MultiSelect(props: MultiSelectProps) {
             <div class="filter-empty">nada</div>
           </Show>
           {visibleOptions().map((opt) => (
-            <label class="filter-option">
+            <label class="filter-option" title={props.optionTitle?.(opt)}>
               <input
                 type="checkbox"
                 checked={value().includes(opt)}
@@ -1417,6 +1421,7 @@ export function NotesView() {
               openFilter={openFilter}
               which="scope"
               onOpenChange={() => toggleFilter("scope")}
+              optionTitle={(opt) => (opt.startsWith("/") ? opt : undefined)}
             />
           </Show>
           <MultiSelect
@@ -1540,6 +1545,7 @@ export function NotesView() {
               onOpenChange={() =>
                 setFormProjectOpen((v) => (v === "project" ? null : "project"))
               }
+              optionTitle={(opt) => opt}
             />
           </Show>
           <label>
