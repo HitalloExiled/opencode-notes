@@ -868,12 +868,6 @@ export function NotesView() {
             <Show when={n.author}>
               <span>por {n.author}</span>
             </Show>
-            <Show when={noteScopeLabel(n)}>
-              <span class="tag tag-scope">
-                {t("meta.scope", noteScopeLabel(n))}{n.scope === "project" && n.projects.length ? ` · ${n.projects.join(", ")}` : ""}
-              </span>
-            </Show>
-            {tagChips(n)}
           </div>
           <pre class="note-content">{n.content}</pre>
           <div class="actions">
