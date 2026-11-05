@@ -20,6 +20,7 @@ import {
   scopeLabel,
   scopeKeysOf,
   scopeOf,
+  sortPinnedFirst,
   tagsOf,
 } from "../src/gui/filters";
 
@@ -141,7 +142,7 @@ describe("scopeLabel", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* applyFilters — scope / tag / pinned (all notes non-retracted)        */
+/* applyFilters — scope / tag / category                               */
 /* ------------------------------------------------------------------ */
 
 // Scope keys in the fixture:
@@ -194,7 +195,6 @@ function idsOf(
     scope?: string[];
     tag?: string[];
     category?: string[];
-    pinnedOnly?: boolean;
     projectOnly?: boolean;
     projectPath?: string;
   },
@@ -204,14 +204,13 @@ function idsOf(
     scope: p.scope ?? [],
     tag: p.tag ?? [],
     category: p.category ?? [],
-    pinnedOnly: p.pinnedOnly ?? false,
     showRetracted: false,
     projectOnly: p.projectOnly ?? false,
     projectPath: p.projectPath ?? "",
   }).map((n) => n.id);
 }
 
-describe("applyFilters (scope / tag / category / pinned)", () => {
+describe("applyFilters (scope / tag / category)", () => {
   test("no chips selected -> every note, in order", () => {
     expect(idsOf({})).toEqual(ALL);
   });
@@ -236,11 +235,6 @@ describe("applyFilters (scope / tag / category / pinned)", () => {
     expect(idsOf({ tag: ["y"] })).toEqual([1, 3]);
     // multi-select: union of the tags, in base order
     expect(idsOf({ tag: ["w", "z"] })).toEqual([2, 4]);
-  });
-
-  test("pinnedOnly: true -> only pinned; false -> all", () => {
-    expect(idsOf({ pinnedOnly: true })).toEqual([3]);
-    expect(idsOf({ pinnedOnly: false })).toEqual(ALL);
   });
 
   test("scope + tag combine (AND)", () => {
@@ -345,7 +339,7 @@ describe("applyFilters (multi-project)", () => {
 
 /* ------------------------------------------------------------------ */
 /* applyFilters — retracted (separate fixture so it never muddies the
- * scope/tag/pinned "all notes" expectations)                          */
+ * scope/tag "all notes" expectations)                                */
 /* ------------------------------------------------------------------ */
 
 const withRetracted: Note[] = [
@@ -355,20 +349,57 @@ const withRetracted: Note[] = [
 
 describe("applyFilters (retracted)", () => {
   test("showRetracted=false hides retracted notes", () => {
-    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: false, projectOnly: false, projectPath: "" });
+    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], showRetracted: false, projectOnly: false, projectPath: "" });
     expect(r.map((n) => n.id)).toEqual([1]);
   });
 
   test("showRetracted=true shows only the retracted notes", () => {
-    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], pinnedOnly: false, showRetracted: true, projectOnly: false, projectPath: "" });
+    const r = applyFilters(withRetracted, { scope: [], tag: [], category: [], showRetracted: true, projectOnly: false, projectPath: "" });
     expect(r.map((n) => n.id)).toEqual([2]);
   });
 
   test("retracted notes drop out of tag matches when hidden", () => {
-    const hidden = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: false, projectOnly: false, projectPath: "" });
+    const hidden = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], showRetracted: false, projectOnly: false, projectPath: "" });
     expect(hidden.map((n) => n.id)).toEqual([]); // "b" only hits the retracted note
-    const shown = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], pinnedOnly: false, showRetracted: true, projectOnly: false, projectPath: "" });
+    const shown = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], showRetracted: true, projectOnly: false, projectPath: "" });
     expect(shown.map((n) => n.id)).toEqual([2]); // same tag while Retiradas is on
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* sortPinnedFirst                                                      */
+/* ------------------------------------------------------------------ */
+
+describe("sortPinnedFirst", () => {
+  test("empty -> empty", () => {
+    expect(sortPinnedFirst([])).toEqual([]);
+  });
+
+  test("pinned notes move first, relative order preserved inside each group", () => {
+    const notes = [
+      note({ id: 1 }),
+      note({ id: 2, pinned: true }),
+      note({ id: 3 }),
+      note({ id: 4, pinned: true }),
+      note({ id: 5 }),
+    ];
+    expect(sortPinnedFirst(notes).map((n) => n.id)).toEqual([2, 4, 1, 3, 5]);
+  });
+
+  test("all pinned / all unpinned -> unchanged order", () => {
+    const pinned = [
+      note({ id: 1, pinned: true }),
+      note({ id: 2, pinned: true }),
+    ];
+    expect(sortPinnedFirst(pinned).map((n) => n.id)).toEqual([1, 2]);
+    const plain = [note({ id: 1 }), note({ id: 2 })];
+    expect(sortPinnedFirst(plain).map((n) => n.id)).toEqual([1, 2]);
+  });
+
+  test("does not mutate the input", () => {
+    const notes = [note({ id: 1 }), note({ id: 2, pinned: true })];
+    sortPinnedFirst(notes);
+    expect(notes.map((n) => n.id)).toEqual([1, 2]);
   });
 });
 

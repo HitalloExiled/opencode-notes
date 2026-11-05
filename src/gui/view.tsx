@@ -9,7 +9,8 @@
  *
  * Data: reads notes over the GUI IPC (`ctx.main(NotesApi)`), full CRUD —
  * add / edit / confirm / dispute / retract / pin / unpin / restore —
- * FTS search with LIKE fallback, a pinned filter, and revision history.
+ * FTS search with LIKE fallback, pinned notes grouped at the top, and
+ * revision history.
  */
 
 import { createEffect, createMemo, createSignal } from "solid-js"
@@ -26,6 +27,7 @@ import {
   pruneSelection,
   scopeKeysOf,
   scopeOf,
+  sortPinnedFirst,
   tagsOf,
 } from "./filters"
 
@@ -269,7 +271,6 @@ export function NotesView() {
   /* ---------- state ---------- */
   const [query, setQuery] = createSignal("")
   const [showRetracted, setShowRetracted] = createSignal(false)
-  const [pinnedOnly, setPinnedOnly] = createSignal(false)
   const [projectOnly, setProjectOnly] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
@@ -675,27 +676,29 @@ export function NotesView() {
   }
 
   /* ---------- derived ---------- */
-  // Reactive filter application: retracted/pinned/scope/tag/category are
-  // applied here,
-  // so deselecting an option re-filters instantly with no re-fetch (and no
-  // stale read from an async load). All the predicate logic lives in
-  // `applyFilters` (src/gui/filters.ts) and is unit-tested.
+  // Reactive filter application: retracted/scope/tag/category/project are
+  // applied here, so deselecting an option re-filters instantly with no
+  // re-fetch (and no stale read from an async load). All the predicate logic
+  // lives in `applyFilters` (src/gui/filters.ts) and is unit-tested.
   const filteredNotes = createMemo(() =>
     applyFilters(resNotes(), {
       scope: scopeFilter(),
       tag: tagFilter(),
       category: categoryFilter(),
-      pinnedOnly: pinnedOnly(),
       showRetracted: showRetracted(),
       projectOnly: projectOnly(),
       projectPath: currentProjectPath(),
     })
   )
+  // Pinned notes are lifted to the top as a stable partition, after filtering
+  // and before pagination — so they always occupy the first pages even while a
+  // search/filter narrows the list.
+  const sortedNotes = createMemo(() => sortPinnedFirst(filteredNotes()))
   const count = createMemo(() => filteredNotes().length)
-  const pageCount = createMemo(() => Math.max(1, Math.ceil(filteredNotes().length / PAGE_SIZE)))
+  const pageCount = createMemo(() => Math.max(1, Math.ceil(sortedNotes().length / PAGE_SIZE)))
   const pagedNotes = createMemo(() => {
     const start = page() * PAGE_SIZE
-    return filteredNotes().slice(start, start + PAGE_SIZE)
+    return sortedNotes().slice(start, start + PAGE_SIZE)
   })
   const revs = createMemo(() => detail()?.revisions ?? [])
 
@@ -791,7 +794,7 @@ export function NotesView() {
     n.verifiedAt !== undefined && n.disputedAt === undefined && n.retractedAt === undefined
 
   // Alert states (retracted / disputed) stay in the title row, where they read
-  // as the note's current status; verified / pinned move to the pills row.
+  // as the note's current status; verified moves to the pills row.
   const alertBadges = (n: Note) => (
     <span class="badges">
       <Show when={n.retractedAt !== undefined}>
@@ -803,14 +806,12 @@ export function NotesView() {
     </span>
   )
 
-  // Order in the pills row: verified, pinned, then scope, then tags.
+  // Order in the pills row: verified, then scope, then tags. Pinned notes are
+  // signalled by their position (top section) instead of a pill.
   const pillBadges = (n: Note) => (
     <>
       <Show when={n.verifiedAt !== undefined && !n.disputedAt && !n.retractedAt}>
         <span class="badge badge-verified">{t("badge.verified")}</span>
-      </Show>
-      <Show when={n.pinned}>
-        <span class="badge badge-pinned">{t("badge.pinned")}</span>
       </Show>
     </>
   )
@@ -952,7 +953,7 @@ export function NotesView() {
         .spacer { flex: 1; }
         .search-row { margin-bottom: 6px; }
         .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-        /* Filter toggle buttons (Fixadas / Retiradas): the base .btn-app is
+        /* Filter toggle buttons (Retiradas / Projeto): the base .btn-app is
            intentionally flat for action rows, but these need a comfortable
            hit-area and breathing room. */
         .chips .btn-app { padding: 4px 12px; }
@@ -1121,6 +1122,21 @@ export function NotesView() {
         .filter-panel-head .btn-app { font-size: 11px; padding: 2px 8px; color: var(--v2-text-text-muted); }
         .filter-panel-head .btn-app:hover { color: var(--v2-text-text-base); }
         .notes { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 0; }
+        /* Pinned notes open the list under this label, separated from the rest
+           by a hairline — the group replaces the old "pinned" pill. */
+        .note-group-head {
+          font-size: 10.5px;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: var(--v2-text-text-muted);
+          padding: 2px 2px 0;
+        }
+        .note-group-sep {
+          height: 1px;
+          margin: 2px 2px;
+          background: var(--v2-border-border-muted);
+        }
         /* Filled surface: the list reads as stacked cards on the panel background,
            with a slight border lift on hover (same treatment as the memory list). */
         .note {
@@ -1131,6 +1147,7 @@ export function NotesView() {
           flex: 0 0 auto;
         }
         .note:hover { border-color: var(--v2-border-border-strong); }
+        .note.pinned { border-color: var(--v2-border-border-strong); }
         .note.retracted { opacity: 0.55; }
         .note.selected { border-color: var(--v2-border-border-focus); }
         /* Tags use the same bg-layer-02 token as the card, which would make them
@@ -1194,7 +1211,6 @@ export function NotesView() {
         }
         .note-pills .tags { max-width: none; flex-wrap: wrap; }
         .badges { display: flex; gap: 4px; flex: 0 0 auto; }        .badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
-        .badge-pinned { border: 1px solid var(--v2-border-border-muted); color: var(--v2-icon-icon-base); }
         .badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
         .badge-retracted { border: 1px solid var(--v2-state-border-danger); color: var(--v2-state-fg-danger); }
         .badge-disputed { border: 1px solid var(--v2-state-border-warning); color: var(--v2-state-fg-warning); }
@@ -1413,12 +1429,6 @@ export function NotesView() {
 
       <div class="chips">
         <button
-          class={`btn-app ${pinnedOnly() ? "is-active" : ""}`}
-          onClick={() => setPinnedOnly(!pinnedOnly())}
-        >
-          {t("filterPinned")}
-        </button>
-        <button
           class={`btn-app ${showRetracted() ? "is-active" : ""}`}
           onClick={() => setShowRetracted(!showRetracted())}
         >
@@ -1631,7 +1641,20 @@ export function NotesView() {
             </div>
           </div>
         </Show>
-        {pagedNotes().map((n) => card(n))}
+        {pagedNotes().map((n, i, arr) => (
+          <>
+            {/* A pinned run opens with the "Pinned" header — including when it
+                starts at the top of a page. */}
+            <Show when={n.pinned && (i === 0 || !arr[i - 1]?.pinned)}>
+              <div class="note-group-head">{t("group.pinned")}</div>
+            </Show>
+            {/* The first non-pinned note after a pinned one gets a divider. */}
+            <Show when={!n.pinned && i > 0 && arr[i - 1]?.pinned}>
+              <div class="note-group-sep" aria-hidden="true" />
+            </Show>
+            {card(n)}
+          </>
+        ))}
       </div>
 
       <Show when={pageCount() > 1}>

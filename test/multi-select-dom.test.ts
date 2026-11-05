@@ -162,7 +162,6 @@ function buildScopeFilter() {
         scope: sel,
         tag: [],
         category: [],
-        pinnedOnly: false,
         showRetracted: false,
       })
   );
@@ -179,7 +178,6 @@ function buildCategoryFilter() {
         scope: [],
         tag: [],
         category: sel,
-        pinnedOnly: false,
         showRetracted: false,
       })
   );

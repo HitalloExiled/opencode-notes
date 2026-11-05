@@ -27,8 +27,6 @@ export type Filters = {
   tag: readonly string[]
   /** Restrict to notes with any of these categories. `[]` means all. */
   category: readonly string[]
-  /** When true, only pinned notes. */
-  pinnedOnly: boolean
   /**
    * When true, show *only* the retracted notes (the "Retiradas" filter).
    * When false, retracted notes are hidden from the main list.
@@ -52,7 +50,7 @@ export type Filters = {
  */
 export function applyFilters(
   res: Note[],
-  { scope, tag, category, pinnedOnly, showRetracted, projectOnly, projectPath }: Filters
+  { scope, tag, category, showRetracted, projectOnly, projectPath }: Filters
 ): Note[] {
   let out = res
   out = out.filter(
@@ -61,7 +59,6 @@ export function applyFilters(
         ? n.retractedAt !== undefined
         : n.retractedAt === undefined
   )
-  if (pinnedOnly) out = out.filter((n) => n.pinned)
   // Multi-project: a note belongs to the current project when *any* of its
   // project paths equals the path.
   if (projectOnly)
@@ -70,6 +67,22 @@ export function applyFilters(
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
   if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))
   return out
+}
+
+/**
+ * Stable partition: pinned notes first, everything else after. The relative
+ * order inside each group is preserved (the store already returns them by
+ * timestamp, so the list keeps its recency order within each section).
+ *
+ * The GUI applies this *after* the filters, so the pinned section is built from
+ * whatever the search/filters currently match — and before pagination, so
+ * pinned notes always land on the first pages.
+ */
+export function sortPinnedFirst(notes: Note[]): Note[] {
+  const pinned: Note[] = []
+  const rest: Note[] = []
+  for (const n of notes) (n.pinned ? pinned : rest).push(n)
+  return [...pinned, ...rest]
 }
 
 /**
