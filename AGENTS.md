@@ -23,9 +23,12 @@ Everything reads/writes a single SQLite DB **directly** via `node:sqlite`
 ## Repo layout
 
 ```
-index.ts                 registers the notes.* tools (Plugin.define + ctx.tool.transform)
+index.ts                 registers the notes.* tools (Plugin.define + ctx.tool.transform),
+                         the <notes-context> hook and the /pin, /unpin commands
 notes.ts                 tool definitions (add/update/search/confirm/dispute/retract/
                          history/restore/view/pin/unpin/doctor)
+commands.ts              /pin and /unpin slash commands (notes-only)
+src/inject.ts            <notes-context> session injection + NOTES_ROUTING_RULE
 src/store.ts             SHARED data layer: node:sqlite, schema v9, migrations, FTS5.
                          Used by BOTH the tools and the GUI. DB path + all SQL live here.
 src/gui.tsx              ./gui-experimental entry → { main, setup }

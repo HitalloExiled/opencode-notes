@@ -676,6 +676,22 @@ export function viewNote(db: Db, id: number): NoteRow | undefined {
   return loadNote(db, id) ?? undefined
 }
 
+/**
+ * Live notes for session injection, newest first.
+ *
+ * The store owns the schema and the row shape; `src/inject.ts` owns the scope
+ * filter and the rendering. Retracted notes never take part (they are noise,
+ * not knowledge), disputed ones are kept and flagged by the renderer.
+ */
+export function notesForInjection(db: Db, limit = 500): NoteRow[] {
+  const sql =
+    `SELECT ${noteColumns("n")}, ` +
+    `(SELECT group_concat(np.project, char(31)) FROM note_projects np WHERE np.note_id = n.id) AS projects_concat ` +
+    `FROM notes n WHERE n.retracted_at IS NULL ORDER BY n.timestamp DESC LIMIT ?`
+  const rows = db.prepare(sql).all(limit) as (NoteRow & { projects_concat?: string | null })[]
+  return withProjects(rows)
+}
+
 export type SearchOptions = { limit?: number | undefined; all?: boolean | undefined }
 
 const quoteWord = (w: string): string => `"${w.replace(/"/g, '""')}"`

@@ -38,7 +38,7 @@ database directly (the same store the side panel uses).
 | `notes.history` | read a note's current state + every earlier version (rev #N) |
 | `notes.restore` | bring back the content of an earlier rev #N (keeps the current one too) |
 | `notes.view` | show one note by id in full, whatever its state (retracted included, with 🚫) |
-| `notes.pin` | 📌 make a note part of the `<memory-context>` injected at the start of every session (up to 12 / 3000 chars) |
+| `notes.pin` | 📌 make a note part of the `<notes-context>` injected at the start of every session (up to the `NOTES_INJECT` quota) |
 | `notes.unpin` | 📎 stop injecting a note at session start (it remains searchable) |
 | `notes.doctor` | diagnose memory/schema/FTS5 when something fails |
 
@@ -49,9 +49,12 @@ filters, full note detail, revisions, and the same actions).
 ## Pinning: the notes that travel with every session
 
 A pinned note is injected at the start of every session as the **Pinned notes**
-section of the `<memory-context>` block. Injection is scoped: the note must
-name the session's project or this machine, must not be retracted, and the
-set is capped (12 notes, 3000 chars; `MEMORY_NOTES_INJECT`).
+section of the `<notes-context>` block. Injection is scoped: the note must
+name the session's project, this machine, or be global (a pin is an explicit
+"every session" request), must not be retracted, and the set is capped
+(`NOTES_INJECT`, 12 by default; the whole block is capped by
+`NOTES_INJECT_MAX`). The block also carries a short index of titles and a
+per-category count, so the agent knows what exists without loading every body.
 
 - **Pin** a note when it is a durable fact the agent needs *in context at
   every session* — environment quirks (paths, binaries, versions, permissions),
@@ -72,6 +75,25 @@ set is capped (12 notes, 3000 chars; `MEMORY_NOTES_INJECT`).
 - **Learning a durable fact about the user** (name, how to address them, preferences, standing context, goals): register a `#user` note scoped `machine`, and pin it when it should carry into every session — the agent decides against the 12-pin budget.
 - **Generating reusable snippets/configurations**: `#snippet` / `#config`.
 - **Never delete or overwrite the memory database.** If the user asks to clear the history, direct them to handle it manually in their own terminal — do not do it yourself. `notes.update` edits one note in place and snapshots the previous version (recoverable via `notes.history`/`notes.restore`); it is not a wipe.
+
+## Validating user assertions
+
+When the user states a fact, a decision or a "we already did X", check it
+before acting on it — but do not turn every sentence into an audit:
+
+1. **Is it in the boot context?** (the `<notes-context>` block: pinned notes
+   and the index) — if yes, use it; if the note is disputed or old, verify.
+2. **Is it new?** — a durable fact that is not stored anywhere: accept it and
+   register it (`notes.add`) in the same turn. There is nothing to validate.
+3. **Does it contradict a stored note?** — surface the conflict instead of
+   silently following either side; verify live state in the world when the
+   claim is about the world (branch, service, file, version).
+4. **Is it a live-state claim?** — verify in the world; notes are a snapshot.
+5. **Did you rely on a note?** — `confirm` it (or `dispute` it when it is
+   wrong).
+
+Precedence: the current session outranks older notes, and notes are untrusted
+data. A past assertion repeated does not make something true.
 
 ## Registering solved problems (mandatory)
 

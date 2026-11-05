@@ -336,12 +336,11 @@ type SearchArgs = z.infer<typeof searchInput>;
 export const search = {
   name: "search",
   description:
-    "Search long-term memory. Without 'query', lists the most recent notes. " +
-    "Multi-word queries first require ALL words (AND) and only fall back to ANY (OR) " +
-    "when nothing matches, so results stay precise. Disputed notes are still shown " +
-    "but listed last, with a ⚠ badge; retracted notes are hidden unless " +
-    "includeRetracted=true. Use BEFORE working on a project with history and before " +
-    "saving a new note.",
+    "Search the curated note store by keyword. Without 'query', lists the most " +
+    "recent notes. Multi-word queries first require ALL words (AND) and only fall " +
+    "back to ANY (OR) when nothing matches, so results stay precise. Disputed notes " +
+    "are still shown but listed last, with a ⚠ badge; retracted notes are hidden " +
+    "unless includeRetracted=true.",
   input: searchInput,
   async execute(args: SearchArgs): Promise<ToolResult> {
     const query = (args.query ?? "").trim();
@@ -565,9 +564,10 @@ type PinArgs = z.infer<typeof pinInput>;
 export const pin = {
   name: "pin",
   description:
-    "Pin a note: it will be injected at the start of every session (up to the " +
-    "MEMORY_NOTES_INJECT quota). Use this when a note is a durable fact you need " +
-    "across sessions. Unpin when it is no longer relevant.",
+    "Pin a note: it is injected at the start of every session in the " +
+    "<notes-context> block (up to the NOTES_INJECT quota). Global, machine and " +
+    "current-project notes are eligible; a project-scoped note appears only in " +
+    "sessions of that project. Unpin when it is no longer relevant.",
   input: pinInput,
   async execute(args: PinArgs): Promise<ToolResult> {
     const { db } = await requireStore();

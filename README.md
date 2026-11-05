@@ -59,11 +59,35 @@ registrar notas.
 4. **Painel lateral (desktop)** — lista paginada, busca, filtros de fixadas/
    retraídas, detalhe com revisões e as ações (salvar, editar, confirmar,
    questionar, retirar, fixar) sem sair do app.
+5. **Injeta o próprio contexto da camada** — no início da sessão (e de novo se
+   o diretório mudar) o plugin publica um bloco `<notes-context>` com as notas
+   fixadas (escopo máquina, global e o projeto correspondente; corpo limitado)
+   e um índice curto com a contagem por categoria e alguns títulos, para o
+   agente saber o que existe sem carregar os corpos. Junto vai a
+   `NOTES_ROUTING_RULE`, a regra de roteamento **desta** camada. O bloco é
+   renderizado uma vez por sessão e reenviado byte a byte (cache de prefixo).
+   O plugin `memory` não lê `notes.db` nem menciona notas.
+
+## Variáveis de ambiente
+
+| Variável | Efeito | Default |
+|---|---|---|
+| `NOTES_DB` | caminho do banco (útil para trabalho isolado) | `$XDG_DATA_HOME/opencode/memory/notes.db` |
+| `NOTES_INJECT` | quantas notas fixadas injetar no `<notes-context>` (`0` desliga a lista) | `12` |
+| `NOTES_INDEX` | quantos títulos mostrar no índice do bloco (`0` desliga) | `6` |
+| `NOTES_INJECT_MAX` | teto de caracteres do bloco `<notes-context>` | `6000` |
+
+## Comandos
+
+`/pin <id>` e `/unpin <id>` fixam/desfixam uma nota; o bloco injetado é
+recalculado na próxima sessão.
 
 ### Nomes e permissões
 
-- **Code Mode:** `tools.notes.add`, `tools.notes.search`, ... (10 tools; grupo
-  `notes` no catálogo).
+- **Code Mode:** `tools.notes.add`, `tools.notes.search`, ... (12 tools; grupo
+  `notes` no catálogo). `search` e `add` são marcados como `pinned` no
+  catálogo, então continuam visíveis mesmo quando o orçamento do namespace se
+  esgota (o resumo lista primeiro as assinaturas mais curtas).
 - **Sessões regulares:** nomes efetivos `notes_add`, `notes_search`, ... — os
   mesmos de antes do refactor de namespace, então as regras de permissão
   existentes (`resource: "notes_add"` etc. no `opencode.jsonc`) continuam
