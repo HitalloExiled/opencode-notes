@@ -1,12 +1,13 @@
 /**
- * Window-side registration for the notes side panel.
+ * Window-side registration for the Notes side panel.
  *
- * Runs in the renderer. Registers:
+ * Registers:
  *  - a removable "Notes" tab in the session's side region (`Panel`),
  *  - a command palette / keybind / slash entry (`Command`),
  *  - a "+ / New tab" menu entry (`MenuItem`).
  */
 
+import { createMemo } from "solid-js"
 import type {
   Panel as PanelType,
   PanelTab,
@@ -19,28 +20,32 @@ import { NotesView } from "./view"
 export const openNotesId = "notes"
 
 export function setup(ctx: SetupContext<never>): void {
-  // Stable (constant) tab object: the host reads the label once per session
-  // switch and does not re-render it on every routing event. It is a regular
-  // tab: the user can close it and reopen it from the command/menu entries.
-  const notesTab: PanelTab = {
+  const text = (pt: string, en: string): string =>
+    (ctx.locale.locale() ?? "").toLowerCase().startsWith("pt") ? pt : en
+
+  // The host reads the label per session switch; the memo follows the locale.
+  const notesTab = createMemo<PanelTab>(() => ({
     id: openNotesId,
-    title: "Notas",
-  }
+    title: text("Notas", "Notes"),
+  }))
 
   // Explicit `PanelType` annotation: stops string literals (`region`) from
   // widening to `string` during inferred return-type checking.
   const notesPanel: PanelType = {
     id: openNotesId,
     region: "side",
-    list: () => [notesTab],
+    list: () => [notesTab()],
     render: () => <NotesView />,
   }
   ctx.add(Panel, () => notesPanel)
 
   ctx.add(Command, () => ({
     id: "open",
-    title: "Abrir Notas",
-    description: "Abre a aba de Notas no painel lateral",
+    title: text("Abrir Notas", "Open Notes"),
+    description: text(
+      "Abre a aba de Notas no painel lateral",
+      "Opens the Notes tab in the side panel"
+    ),
     bind: "mod+shift+n",
     group: "general",
     run: () => {
@@ -51,12 +56,10 @@ export function setup(ctx: SetupContext<never>): void {
     },
   }))
 
-  // Explicit `SessionPanelMenuItem` annotation: keeps `menu` as the literal
-  // "session.panel" instead of widening to `string`.
-  const notesMenu: SessionPanelMenuItem = {
+  ctx.add(MenuItem, (): SessionPanelMenuItem => ({
     menu: "session.panel",
     id: "notes",
-    title: "Notas",
+    title: text("Notas", "Notes"),
     icon: "file-document",
     run: () => {
       const session = ctx.sessions.current()
@@ -64,6 +67,5 @@ export function setup(ctx: SetupContext<never>): void {
         ctx.layout.open(`${ctx.id}:${openNotesId}`, session)
       }
     },
-  }
-  ctx.add(MenuItem, () => notesMenu)
+  }))
 }
