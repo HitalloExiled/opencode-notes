@@ -58,9 +58,9 @@ registrar notas.
    subsistema).
 4. **Painel lateral (desktop)** — lista paginada, busca, filtros de
    retraídas/projeto, detalhe com revisões e as ações (salvar, editar,
-   confirmar, questionar, retirar, fixar) sem sair do app. As notas fixadas
-   aparecem agrupadas no topo da lista ("Fixadas"), separadas das demais por
-   um divisor.
+   confirmar, questionar, retirar, fixar) sem sair do app. A lista é dividida
+   em seções rotuladas: as notas fixadas aparecem primeiro ("Fixadas"), e as
+   demais abaixo de "Outras notas".
 5. **Injeta o próprio contexto da camada** — no início da sessão (e de novo se
    o diretório mudar) o plugin publica um bloco `<notes-context>` com as notas
    fixadas (escopo máquina, global e o projeto correspondente; corpo limitado)

@@ -694,6 +694,9 @@ export function NotesView() {
   // and before pagination — so they always occupy the first pages even while a
   // search/filter narrows the list.
   const sortedNotes = createMemo(() => sortPinnedFirst(filteredNotes()))
+  // Only label an "others" section when there actually is a pinned section to
+  // contrast with; a list of purely unpinned notes needs no second header.
+  const hasPinned = createMemo(() => sortedNotes().some((n) => n.pinned))
   const count = createMemo(() => filteredNotes().length)
   const pageCount = createMemo(() => Math.max(1, Math.ceil(sortedNotes().length / PAGE_SIZE)))
   const pagedNotes = createMemo(() => {
@@ -1122,8 +1125,8 @@ export function NotesView() {
         .filter-panel-head .btn-app { font-size: 11px; padding: 2px 8px; color: var(--v2-text-text-muted); }
         .filter-panel-head .btn-app:hover { color: var(--v2-text-text-base); }
         .notes { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 0; }
-        /* Pinned notes open the list under this label, separated from the rest
-           by a hairline — the group replaces the old "pinned" pill. */
+        /* Notes open in labelled sections (pinned first, then the rest); the
+           group headers replace the old "pinned" pill and divider. */
         .note-group-head {
           font-size: 10.5px;
           font-weight: 600;
@@ -1132,11 +1135,7 @@ export function NotesView() {
           color: var(--v2-text-text-muted);
           padding: 2px 2px 0;
         }
-        .note-group-sep {
-          height: 1px;
-          margin: 2px 2px;
-          background: var(--v2-border-border-muted);
-        }
+        .note-group-head:not(:first-child) { margin-top: 4px; }
         /* Filled surface: the list reads as stacked cards on the panel background,
            with a slight border lift on hover (same treatment as the memory list). */
         .note {
@@ -1643,14 +1642,20 @@ export function NotesView() {
         </Show>
         {pagedNotes().map((n, i, arr) => (
           <>
-            {/* A pinned run opens with the "Pinned" header — including when it
-                starts at the top of a page. */}
+            {/* Each section opens with its own header, matching the old "pinned"
+                pill's role. A header also repeats when a section continues at
+                the top of the next page. */}
             <Show when={n.pinned && (i === 0 || !arr[i - 1]?.pinned)}>
               <div class="note-group-head">{t("group.pinned")}</div>
             </Show>
-            {/* The first non-pinned note after a pinned one gets a divider. */}
-            <Show when={!n.pinned && i > 0 && arr[i - 1]?.pinned}>
-              <div class="note-group-sep" aria-hidden="true" />
+            <Show
+              when={
+                !n.pinned &&
+                hasPinned() &&
+                (i > 0 ? arr[i - 1]?.pinned : page() > 0)
+              }
+            >
+              <div class="note-group-head">{t("group.others")}</div>
             </Show>
             {card(n)}
           </>
