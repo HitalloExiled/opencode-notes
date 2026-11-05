@@ -564,8 +564,9 @@ type PinArgs = z.infer<typeof pinInput>;
 export const pin = {
   name: "pin",
   description:
-    "Pin a note: it is injected at the start of every session in the " +
-    "<notes-context> block (up to the NOTES_INJECT quota). Global, machine and " +
+    "Pin a note: it is injected in the <notes-context> block (up to the " +
+    "NOTES_INJECT quota) — at the start of every session and, when the pinned " +
+    "set changes mid-session, the affected agent is notified. Global, machine and " +
     "current-project notes are eligible; a project-scoped note appears only in " +
     "sessions of that project. Unpin when it is no longer relevant.",
   input: pinInput,
@@ -580,8 +581,9 @@ export const pin = {
 export const unpin = {
   name: "unpin",
   description:
-    "Unpin a note: it will no longer be injected at session start (but remains " +
-    "searchable via notes.search). Use this when a pinned note is no longer " +
+    "Unpin a note: it will no longer be injected in <notes-context> (but remains " +
+    "searchable via notes.search). When the pinned set changes mid-session, the " +
+    "affected agent is notified. Use this when a pinned note is no longer " +
     "relevant to the current work.",
   input: pinInput,
   async execute(args: PinArgs): Promise<ToolResult> {

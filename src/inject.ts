@@ -28,15 +28,50 @@ export type PluginContext = Parameters<Definition["setup"]>[0];
 
 type SystemPart = { type: "text"; text: string };
 
-/** One cached render per session (see the prefix-cache note above). */
-type State = { directory?: string | undefined; block?: string | undefined };
+/** One pinned note as it appears in `<notes-context>`, used for change notices. */
+export type PinnedInfo = {
+  id: number;
+  title: string;
+  timestamp: string;
+  verifiedAt?: string | undefined;
+  disputedAt?: string | undefined;
+};
+
+/**
+ * One cached render per session (see the prefix-cache note above) plus the
+ * pinned set that render was built from, so the next request can tell when a
+ * pin/unpin changed what this session injects.
+ */
+type State = {
+  directory?: string | undefined;
+  block?: string | undefined;
+  pinned?: PinnedInfo[] | undefined;
+};
 
 export type NotesLoader = (directory?: string | undefined) => Promise<string | undefined>;
+export type PinnedLoader = (directory?: string | undefined) => Promise<PinnedInfo[] | undefined>;
+export type PinnedNotifier = (input: {
+  sessionID: string;
+  text: string;
+  description: string;
+  added: readonly PinnedInfo[];
+  removed: readonly PinnedInfo[];
+}) => Promise<void>;
 
-export type Runtime = { sessions: Map<string, State>; load: NotesLoader };
+export type Runtime = {
+  sessions: Map<string, State>;
+  load: NotesLoader;
+  /** Reads the pinned notes injected for a directory; enables change detection. */
+  pinned?: PinnedLoader | undefined;
+  /** Delivers the change notice to the session (production: `session.synthetic`). */
+  notify?: PinnedNotifier | undefined;
+};
 
-export function createRuntime(load: NotesLoader = buildNotesBlock): Runtime {
-  return { sessions: new Map(), load };
+export function createRuntime(
+  load: NotesLoader = buildNotesBlock,
+  options: { pinned?: PinnedLoader | undefined; notify?: PinnedNotifier | undefined } = {},
+): Runtime {
+  return { sessions: new Map(), load, pinned: options.pinned, notify: options.notify };
 }
 
 /* ------------------------------------------------------------------ */
@@ -177,6 +212,38 @@ function categorySummary(notes: NoteRow[]): string {
   return `${notes.length} notes in scope: ${line}.`;
 }
 
+function isPinned(note: NoteRow): boolean {
+  return note.pinned === 1 || note.pinned === true;
+}
+
+/** In-scope notes, newest first, before the pinned/index split. */
+function scopedNotes(db: Db, directory: string | undefined, host: string[]): NoteRow[] {
+  return notesForInjection(db).filter((note) => noteInScope(note, directory, host));
+}
+
+/** The pinned slice that actually enters `<notes-context>` (scope + NOTES_INJECT cap). */
+function pinnedNotes(scoped: readonly NoteRow[]): NoteRow[] {
+  return scoped.filter(isPinned).slice(0, notesInjectLimit());
+}
+
+/**
+ * The pinned notes a session injects, in render order. Used by the hook to
+ * notice when a pin/unpin changes this session's `<notes-context>`.
+ */
+export function pinnedForSession(
+  db: Db,
+  directory: string | undefined,
+  host: string[] = machineIdentifiers(),
+): PinnedInfo[] {
+  return pinnedNotes(scopedNotes(db, directory, host)).map((note) => ({
+    id: note.id,
+    title: note.title,
+    timestamp: note.timestamp,
+    verifiedAt: note.verified_at ?? undefined,
+    disputedAt: note.disputed_at ?? undefined,
+  }));
+}
+
 /**
  * Renders the whole block from an open database, or undefined when no note is
  * in scope (no empty scaffolding in the prompt).
@@ -186,16 +253,16 @@ export function renderNotesBlock(
   directory: string | undefined,
   host: string[] = machineIdentifiers(),
 ): string | undefined {
-  const scoped = notesForInjection(db).filter((note) => noteInScope(note, directory, host));
+  const scoped = scopedNotes(db, directory, host);
   if (scoped.length === 0) return undefined;
 
-  const pinned = scoped.filter((note) => note.pinned === 1 || note.pinned === true).slice(0, notesInjectLimit());
+  const pinned = pinnedNotes(scoped);
   const indexLimit = notesIndexLimit();
   const indexNotes =
     indexLimit === 0
       ? []
       : scoped
-          .filter((note) => !(note.pinned === 1 || note.pinned === true))
+          .filter((note) => !isPinned(note))
           .slice(0, indexLimit);
 
   const parts = ["<notes-context>"];
@@ -219,6 +286,13 @@ export async function buildNotesBlock(directory: string | undefined): Promise<st
   const { store } = await getStore();
   if (!store) return undefined;
   return renderNotesBlock(store.db, directory);
+}
+
+/** Opens the store and reads this session's pinned slice (change detection). */
+export async function buildPinnedInfo(directory: string | undefined): Promise<PinnedInfo[] | undefined> {
+  const { store } = await getStore();
+  if (!store) return undefined;
+  return pinnedForSession(store.db, directory);
 }
 
 /* ------------------------------------------------------------------ */
@@ -250,8 +324,42 @@ async function sessionDirectory(ctx: PluginContext, sessionID: string): Promise<
 }
 
 /**
+ * Stable identity of the injected pinned slice. A pin/unpin changes the ids;
+ * an update to a pinned note changes its timestamp/status, which is enough to
+ * rebuild the block even when the notice has nothing to report.
+ */
+function pinnedSignature(notes: readonly PinnedInfo[]): string {
+  return notes
+    .map((note) => `${note.id}:${note.timestamp}:${note.verifiedAt ?? ""}:${note.disputedAt ?? ""}`)
+    .join("|");
+}
+
+/**
+ * Agent-facing notice for pinned notes entering or leaving this session's
+ * `<notes-context>`. Undefined when only a note's contents changed.
+ */
+export function renderPinnedChange(
+  added: readonly PinnedInfo[],
+  removed: readonly PinnedInfo[],
+): string | undefined {
+  const lines = [
+    ...added.map(
+      (note) => `- #${note.id} "${note.title}" foi fixada e agora faz parte do seu <notes-context>.`,
+    ),
+    ...removed.map(
+      (note) => `- #${note.id} "${note.title}" saiu do seu <notes-context> (desfixada, retirada ou fora do limite).`,
+    ),
+  ];
+  if (lines.length === 0) return undefined;
+  return ["Notas fixadas neste contexto mudaram:", ...lines].join("\n");
+}
+
+/**
  * Appends the notes block (once per session, byte-stable) and its routing rule.
- * Never throws: a broken database must not break the agent loop.
+ * Between requests it also re-renders when this session's pinned slice changes
+ * and notifies the agent through a synthetic message — so a pin made from the
+ * panel, a tool or `/pin` is reflected immediately instead of only in the next
+ * session. Never throws: a broken database must not break the agent loop.
  */
 export async function onContext(
   ctx: PluginContext,
@@ -260,10 +368,48 @@ export async function onContext(
 ): Promise<void> {
   try {
     const directory = await sessionDirectory(ctx, event.sessionID);
+    const pinned = runtime.pinned
+      ? await runtime.pinned(directory).catch(() => undefined)
+      : undefined;
+    const signature = pinned === undefined ? undefined : pinnedSignature(pinned);
+
     let state = runtime.sessions.get(event.sessionID);
     if (!state || state.directory !== directory) {
-      state = { directory, block: await runtime.load(directory).catch(() => undefined) };
+      state = { directory, block: await runtime.load(directory).catch(() => undefined), pinned };
       runtime.sessions.set(event.sessionID, state);
+    } else {
+      const current = state;
+      if (
+        runtime.pinned &&
+        pinned !== undefined &&
+        signature !== pinnedSignature(current.pinned ?? [])
+      ) {
+        const previous = current.pinned ?? [];
+        const nextIds = new Set(pinned.map((note) => note.id));
+        const previousIds = new Set(previous.map((note) => note.id));
+        const added = pinned.filter((note) => !previousIds.has(note.id));
+        const removed = previous.filter((note) => !nextIds.has(note.id));
+
+        current.block = await runtime.load(directory).catch(() => current.block);
+        current.pinned = pinned;
+
+        const text = renderPinnedChange(added, removed);
+        if (text && runtime.notify) {
+          await runtime
+            .notify({
+              sessionID: event.sessionID,
+              text,
+              description: "Notas fixadas neste contexto mudaram",
+              added,
+              removed,
+            })
+            .catch((error) => {
+              console.error(
+                `[notes] pinned change notice failed for ${event.sessionID}: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            });
+        }
+      }
     }
     if (state.block) event.system.push({ type: "text", text: state.block });
   } catch (error) {

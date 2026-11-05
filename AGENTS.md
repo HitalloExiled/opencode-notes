@@ -28,7 +28,8 @@ index.ts                 registers the notes.* tools (Plugin.define + ctx.tool.t
 notes.ts                 tool definitions (add/update/search/confirm/dispute/retract/
                          history/restore/view/pin/unpin/doctor)
 commands.ts              /pin and /unpin slash commands (notes-only)
-src/inject.ts            <notes-context> session injection + NOTES_ROUTING_RULE
+src/inject.ts            <notes-context> session injection, NOTES_ROUTING_RULE,
+                         and the pinned-change notice (session.synthetic)
 src/store.ts             SHARED data layer: node:sqlite, schema v9, migrations, FTS5.
                          Used by BOTH the tools and the GUI. DB path + all SQL live here.
 src/gui.tsx              ./gui-experimental entry → { main, setup }

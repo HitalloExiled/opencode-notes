@@ -29,13 +29,28 @@ import {
   update,
   view,
 } from "./notes.js";
-import { createRuntime, onContext } from "./src/inject.js";
+import { buildPinnedInfo, createRuntime, onContext } from "./src/inject.js";
 import { registerCommands } from "./commands.js";
 
 export default Plugin.define({
   id: "notes",
   async setup(ctx) {
-    const runtime = createRuntime();
+    // `pinned` + `notify` let the context hook notice when a pin/unpin changes
+    // what this session injects and tell the agent about it. The synthetic
+    // message mirrors the plans plugin: `resume: false` never wakes an idle
+    // session, so the notice is delivered on its next turn.
+    const runtime = createRuntime(undefined, {
+      pinned: buildPinnedInfo,
+      notify: async ({ sessionID, text, description }) => {
+        await ctx.session.synthetic({
+          sessionID: sessionID as never,
+          text,
+          description,
+          resume: false,
+          metadata: { source: "notes" },
+        });
+      },
+    });
     const registration = await ctx.tool.transform((editor) => {
       // editor.namespace() only labels the catalog group; the per-tool
       // options.namespace below is what actually prefixes the qualified
@@ -43,7 +58,7 @@ export default Plugin.define({
       editor.namespace({
         name: "notes",
         description:
-          "Curated long-term memory: decisions, solved problems, configuration and snippets, with a trust lifecycle (confirm/dispute/retract), full version history, and pinning into session context (pinned notes are injected at session start in the <notes-context> block). Nothing is ever deleted: retract hides, restore revives.",
+          "Curated long-term memory: decisions, solved problems, configuration and snippets, with a trust lifecycle (confirm/dispute/retract), full version history, and pinning into session context (pinned notes are injected in the <notes-context> block, and the agent is notified when the injected set changes). Nothing is ever deleted: retract hides, restore revives.",
       });
       // `pinned` keeps the two entry points in the Code Mode catalog even when
       // its per-namespace budget is exhausted (the summary lists the cheapest

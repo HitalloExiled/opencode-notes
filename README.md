@@ -67,8 +67,11 @@ registrar notas.
    e um índice curto com a contagem por categoria e alguns títulos, para o
    agente saber o que existe sem carregar os corpos. Junto vai a
    `NOTES_ROUTING_RULE`, a regra de roteamento **desta** camada. O bloco é
-   renderizado uma vez por sessão e reenviado byte a byte (cache de prefixo).
-   O plugin `memory` não lê `notes.db` nem menciona notas.
+   renderizado uma vez por sessão e reenviado byte a byte (cache de prefixo);
+   quando uma nota fixada entra ou sai do conjunto injetado da sessão (pin,
+   unpin, retirada ou mudança de escopo), o bloco é re-renderizado e o agente
+   recebe uma mensagem sintética avisando da mudança. O plugin `memory` não lê
+   `notes.db` nem menciona notas.
 
 ## Variáveis de ambiente
 

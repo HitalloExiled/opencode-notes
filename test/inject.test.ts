@@ -11,7 +11,7 @@ import { userInfo } from "node:os";
 
 const { DatabaseSync } = (await import("node:sqlite")) as any;
 
-import type { PluginContext } from "../src/inject";
+import type { PinnedInfo, PluginContext, Runtime } from "../src/inject";
 import {
   createRuntime,
   noteInScope,
@@ -19,7 +19,9 @@ import {
   notesIndexLimit,
   notesInjectLimit,
   onContext as runtimeHook,
+  pinnedForSession,
   renderNotesBlock,
+  renderPinnedChange,
 } from "../src/inject";
 import { initSchema, notesDbPath, notesForInjection } from "../src/store";
 
@@ -208,6 +210,47 @@ describe("notesForInjection", () => {
   });
 });
 
+describe("pinnedForSession", () => {
+  test("returns only in-scope pinned notes, newest first", () => {
+    expect(pinnedForSession(db, PROJECT).map((note) => note.id)).toEqual([10, 4, 3, 2, 1]);
+  });
+
+  test("excludes retracted and out-of-scope pinned notes", () => {
+    const ids = pinnedForSession(db, PROJECT).map((note) => note.id);
+    expect(ids).not.toContain(7); // retracted
+    expect(ids).not.toContain(5); // another project
+  });
+
+  test("respects the NOTES_INJECT cap and 0 disables the pinned set", () => {
+    try {
+      process.env.NOTES_INJECT = "2";
+      expect(pinnedForSession(db, PROJECT).map((note) => note.id)).toEqual([10, 4]);
+      process.env.NOTES_INJECT = "0";
+      expect(pinnedForSession(db, PROJECT)).toEqual([]);
+    } finally {
+      delete process.env.NOTES_INJECT;
+    }
+  });
+});
+
+describe("renderPinnedChange", () => {
+  const note = (id: number, title: string): PinnedInfo => ({
+    id,
+    title,
+    timestamp: "2026-10-27 09:00:00",
+  });
+
+  test("reports pins entering and leaving the context", () => {
+    const text = renderPinnedChange([note(12, "New")], [note(3, "Old")])!;
+    expect(text).toContain('#12 "New" foi fixada');
+    expect(text).toContain('#3 "Old" saiu');
+  });
+
+  test("undefined when nothing entered or left", () => {
+    expect(renderPinnedChange([], [])).toBeUndefined();
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /* Hook                                                                */
 /* ------------------------------------------------------------------ */
@@ -228,6 +271,43 @@ function harness(directory: string) {
     runtime,
     moveTo: (next: string) => {
       info = { location: { directory: next } };
+    },
+  };
+}
+
+const pinned = (id: number, title: string): PinnedInfo => ({
+  id,
+  title,
+  timestamp: "2026-10-27 09:00:00",
+});
+
+/** Harness for the pin-change notice: mutable pinned list, block and notice log. */
+function pinnedHarness(initial: PinnedInfo[]) {
+  let pinnedList = initial;
+  let block: string | undefined = "block-v1";
+  const notices: Parameters<NonNullable<Runtime["notify"]>>[0][] = [];
+  const ctx = {
+    session: { get: async () => ({ location: { directory: "/work/a" } }) },
+  } as unknown as PluginContext;
+  const runtime = createRuntime(async () => block, {
+    pinned: async () => pinnedList,
+    notify: async (notice) => {
+      notices.push(notice);
+    },
+  });
+  const call = async () => {
+    const event = { sessionID: "ses_a", system: [] as SystemPart[] };
+    await runtimeHook(ctx, runtime, event);
+    return event;
+  };
+  return {
+    call,
+    notices,
+    setPinned: (next: PinnedInfo[]) => {
+      pinnedList = next;
+    },
+    setBlock: (next: string | undefined) => {
+      block = next;
     },
   };
 }
@@ -284,6 +364,58 @@ describe("onContext", () => {
     const event = { sessionID: "ses_y", system: [] as SystemPart[] };
     await runtimeHook(ctx, runtime, event);
     expect(event.system.length).toBe(1);
+  });
+
+  test("notifies the agent when the injected pinned set gains a note, once", async () => {
+    const h = pinnedHarness([pinned(1, "Alpha")]);
+    await h.call();
+    expect(h.notices).toHaveLength(0); // first render: nothing "changed"
+
+    h.setPinned([pinned(2, "Beta"), pinned(1, "Alpha")]);
+    h.setBlock("block-v2");
+    const event = await h.call();
+    expect(h.notices).toHaveLength(1);
+    expect(h.notices[0]!.sessionID).toBe("ses_a");
+    expect(h.notices[0]!.text).toContain("#2");
+    expect(h.notices[0]!.text).toContain("Beta");
+    expect(h.notices[0]!.added.map((note) => note.id)).toEqual([2]);
+    expect(event.system[0]!.text).toBe("block-v2"); // the block is re-rendered
+
+    await h.call(); // unchanged: no repeat
+    expect(h.notices).toHaveLength(1);
+  });
+
+  test("notifies when a note leaves the injected pinned set", async () => {
+    const h = pinnedHarness([pinned(2, "Beta"), pinned(1, "Alpha")]);
+    await h.call();
+    h.setPinned([pinned(1, "Alpha")]);
+    await h.call();
+    expect(h.notices).toHaveLength(1);
+    expect(h.notices[0]!.text).toContain("saiu");
+    expect(h.notices[0]!.removed.map((note) => note.id)).toEqual([2]);
+  });
+
+  test("re-renders silently when only a pinned note's contents change", async () => {
+    const h = pinnedHarness([pinned(1, "Alpha")]);
+    await h.call();
+    h.setPinned([{ ...pinned(1, "Alpha"), timestamp: "2026-10-27 10:00:00" }]);
+    h.setBlock("block-updated");
+    const event = await h.call();
+    expect(h.notices).toHaveLength(0);
+    expect(event.system[0]!.text).toBe("block-updated");
+  });
+
+  test("does not notify when the pinned loader is absent", async () => {
+    const runtime = createRuntime(async () => "block");
+    const ctx = { session: { get: async () => ({ location: { directory: "/work/a" } }) } } as unknown as PluginContext;
+    const call = async () => {
+      const event = { sessionID: "ses_a", system: [] as SystemPart[] };
+      await runtimeHook(ctx, runtime, event);
+      return event;
+    };
+    await call();
+    const event = await call();
+    expect(event.system[0]!.text).toBe("block");
   });
 });
 
