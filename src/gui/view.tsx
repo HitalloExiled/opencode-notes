@@ -1120,16 +1120,22 @@ export function NotesView() {
         .filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .filter-panel-head .btn-app { font-size: 11px; padding: 2px 8px; color: var(--v2-text-text-muted); }
         .filter-panel-head .btn-app:hover { color: var(--v2-text-text-base); }
-        .notes { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; min-height: 0; }
+        .notes { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 0; }
+        /* Filled surface: the list reads as stacked cards on the panel background,
+           with a slight border lift on hover (same treatment as the memory list). */
         .note {
           border: 1px solid var(--v2-border-border-muted);
-          border-radius: 4px;
-          background: transparent;
+          border-radius: 8px;
+          background: var(--v2-background-bg-layer-02);
           overflow: hidden;
           flex: 0 0 auto;
         }
+        .note:hover { border-color: var(--v2-border-border-strong); }
         .note.retracted { opacity: 0.55; }
         .note.selected { border-color: var(--v2-border-border-focus); }
+        /* Tags use the same bg-layer-02 token as the card, which would make them
+           invisible; re-skin them slightly brighter inside the card. */
+        .note .tag { background: var(--v2-overlay-simple-overlay-pressed); }
         .note-row { display: flex; align-items: center; min-width: 0; }
         .note-attach { flex: 0 0 auto; margin-right: 6px; }
         .note-head {
@@ -1145,8 +1151,8 @@ export function NotesView() {
           color: inherit;
           cursor: pointer;
           box-sizing: border-box;
-          min-height: 32px;
-          padding: 5px 8px 5px 12px;
+          min-height: 34px;
+          padding: 6px 10px 6px 12px;
         }
         .note-head:hover { background: var(--v2-overlay-simple-overlay-hover); }
         .note-head:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
