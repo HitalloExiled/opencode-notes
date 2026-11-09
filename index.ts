@@ -60,9 +60,10 @@ export default Plugin.define({
         description:
           "Curated long-term memory: decisions, solved problems, configuration and snippets, with a trust lifecycle (confirm/dispute/retract), full version history, and pinning into session context (pinned notes are injected in the <notes-context> block, and the agent is notified when the injected set changes). Nothing is ever deleted: retract hides, restore revives.",
       });
-      // `pinned` keeps the two entry points in the Code Mode catalog even when
-      // its per-namespace budget is exhausted (the summary lists the cheapest
-      // signatures first, which otherwise surfaces only doctor/pin/unpin).
+      // `pinned` keeps the entry points (add/search) and the pin controls in the
+      // Code Mode catalog even when its per-namespace budget is exhausted (the
+      // summary lists the cheapest signatures first, so pin/unpin would
+      // otherwise drop out of the visible catalog).
       editor.add({ ...add, options: { namespace: "notes", pinned: true } });
       editor.add({ ...update, options: { namespace: "notes" } });
       editor.add({ ...search, options: { namespace: "notes", pinned: true } });
@@ -72,8 +73,8 @@ export default Plugin.define({
       editor.add({ ...history, options: { namespace: "notes" } });
       editor.add({ ...restore, options: { namespace: "notes" } });
       editor.add({ ...view, options: { namespace: "notes" } });
-      editor.add({ ...pin, options: { namespace: "notes" } });
-      editor.add({ ...unpin, options: { namespace: "notes" } });
+      editor.add({ ...pin, options: { namespace: "notes", pinned: true } });
+      editor.add({ ...unpin, options: { namespace: "notes", pinned: true } });
       editor.add({ ...doctor, options: { namespace: "notes" } });
     });
 

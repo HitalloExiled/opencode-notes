@@ -90,9 +90,9 @@ recalculado na próxima sessão.
 ### Nomes e permissões
 
 - **Code Mode:** `tools.notes.add`, `tools.notes.search`, ... (12 tools; grupo
-  `notes` no catálogo). `search` e `add` são marcados como `pinned` no
-  catálogo, então continuam visíveis mesmo quando o orçamento do namespace se
-  esgota (o resumo lista primeiro as assinaturas mais curtas).
+  `notes` no catálogo). `add`, `search`, `pin` e `unpin` são marcados como
+  `pinned` no catálogo, então continuam visíveis mesmo quando o orçamento do
+  namespace se esgota (o resumo lista primeiro as assinaturas mais curtas).
 - **Sessões regulares:** nomes efetivos `notes_add`, `notes_search`, ... — os
   mesmos de antes do refactor de namespace, então as regras de permissão
   existentes (`resource: "notes_add"` etc. no `opencode.jsonc`) continuam

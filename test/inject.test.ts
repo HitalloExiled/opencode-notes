@@ -135,6 +135,7 @@ describe("renderNotesBlock", () => {
     expect(block).toContain(`#3 [config] Machine named note gamma (machine:${userPart})`);
     expect(block).toContain("#10 [decision] Pinned global note");
     expect(block).toContain("3 config · 2 decision · 2 general");
+    expect(block).toContain("pin it: notes.pin <id>");
     expect(block).toContain("</notes-context>");
   });
 
@@ -427,6 +428,14 @@ describe("layer isolation", () => {
   test("the notes rule never mentions the memory layer", () => {
     expect(NOTES_ROUTING_RULE.toLowerCase()).not.toContain("memory.search");
     expect(NOTES_ROUTING_RULE.toLowerCase()).not.toContain("<memory-context>");
+  });
+
+  test("the notes rule names the pin tools and leaves 'remember' to the memory layer", () => {
+    expect(NOTES_ROUTING_RULE).toContain("notes.pin <id>");
+    expect(NOTES_ROUTING_RULE).toContain("notes.unpin");
+    expect(NOTES_ROUTING_RULE.toLowerCase()).not.toContain("remember");
+    expect(NOTES_ROUTING_RULE.toLowerCase()).not.toContain("lembra");
+    expect(NOTES_ROUTING_RULE.toLowerCase()).not.toContain("guarda");
   });
 
   test("the store honors $NOTES_DB (the memory plugin used to ignore it)", () => {
