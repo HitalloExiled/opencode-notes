@@ -73,7 +73,7 @@ These are standing constraints, not suggestions:
 The visual and behavioral contract for the side panels is
 [docs/gui-guideline.md](https://github.com/HitalloExiled/opencode-tools/blob/main/docs/gui-guideline.md).
 GUI code used by more than one plugin lives in
-`@hitalloexiled/opencode-shared/gui` (the parent's `shared/` submodule, linked
+`opencode-shared/gui` (the parent's `shared/` submodule, linked
 into `node_modules` by `setup.sh`) — never copy it into this repo.
 
 Non-negotiables:
