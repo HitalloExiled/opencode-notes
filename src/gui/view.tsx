@@ -16,7 +16,8 @@
 import { createEffect, createMemo, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
 import { Show } from "solid-js"
-import { usePlugin } from "@opencode/plugin/gui"
+import { usePanel, usePlugin } from "@opencode/plugin/gui"
+import { SHARED_CSS, ScrollNav, createScrollNav, EmptyState, ErrorBanner, LoadingRow } from "@hitalloexiled/opencode-shared/gui"
 import { scopeChipLabel, useT } from "./i18n"
 import { NotesApi } from "./contract"
 import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
@@ -109,6 +110,8 @@ type MultiSelectProps = {
 
 function MultiSelect(props: MultiSelectProps) {
   const { label, placeholder, options, value, onValueChange, openFilter, which, onOpenChange } = props
+  const ctx = usePlugin()
+  const t = useT()
   const show = (opt: string) => props.display?.(opt) ?? opt
   // Reactive open state (memo => a signal <Show> can track), driven by the
   // shared `openFilter` so only one combo is open at a time.
@@ -147,36 +150,36 @@ function MultiSelect(props: MultiSelectProps) {
   })
 
   return (
-    <div class="filter-cell">
-      <div class="filter-btn-row">
+    <div class="notes-filter-cell">
+      <div class="notes-filter-btn-row">
         <button
-          class="filter-btn"
+          class="notes-filter-btn"
           type="button"
           aria-expanded={open()}
           aria-label={label}
           onClick={onOpenChange}
         >
-          <div class="filter-btn-content">
+          <div class="notes-filter-btn-content">
             <Show when={value().length === 0}>
-              <span class="filter-btn-label is-placeholder">{placeholder}</span>
+              <span class="notes-filter-btn-label is-placeholder">{placeholder}</span>
             </Show>
             <Show when={value().length > 0}>
-              <span class="tags">
+              <span class="notes-tags">
                 {value().slice(0, 2).map((opt) => (
-                  <span class="tag">{show(opt)}</span>
+                  <span class="notes-tag">{show(opt)}</span>
                 ))}
                 {value().length > 2 && (
-                  <span class="tag tag-more">+{value().length - 2}</span>
+                  <span class="notes-tag notes-tag-more">+{value().length - 2}</span>
                 )}
               </span>
             </Show>
           </div>
           <Show when={value().length === 0}>
-            <span class="filter-btn-caret" aria-hidden="true" />
+            <span class="notes-filter-btn-caret" aria-hidden="true" />
           </Show>
           <Show when={value().length > 0}>
             <span
-              class="filter-btn-x"
+              class="notes-filter-btn-x"
               role="button"
               aria-label={`Limpar ${label}`}
               tabIndex={0}
@@ -189,40 +192,40 @@ function MultiSelect(props: MultiSelectProps) {
                 }
               }}
             >
-              <span class="filter-clear-x" aria-hidden="true">×</span>
+              <span class="notes-filter-clear-x" aria-hidden="true">×</span>
             </span>
           </Show>
         </button>
       </div>
 
       <div
-        class={open() ? "filter-panel" : "filter-panel is-hidden"}
+        class={open() ? "notes-filter-panel" : "notes-filter-panel is-hidden"}
         aria-hidden={!open()}
       >
-        <div class="filter-panel-head">
-          <span class="filter-panel-title">{label}</span>
+        <div class="notes-filter-panel-head">
+          <span class="notes-filter-panel-title">{label}</span>
           <Show when={value().length > 0}>
-            <button class="btn-app is-ghost" type="button" onClick={clear}>
-              Limpar
-            </button>
+            <ctx.ui.Button size="small" variant="ghost" onClick={clear}>
+              {t("filter.clear")}
+            </ctx.ui.Button>
           </Show>
         </div>
-        <div class="filter-panel-search">
+        <div class="notes-filter-panel-search">
           <input
             type="text"
-            class="filter-panel-search-input"
+            class="notes-filter-panel-search-input"
             placeholder="Filtrar…"
             aria-label={`Filtrar ${label.toLowerCase()}`}
             value={search()}
             onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
           />
         </div>
-        <div class="filter-panel-list">
+        <div class="notes-filter-panel-list">
           <Show when={search().trim() !== "" && visibleOptions().length === 0}>
-            <div class="filter-empty">nada</div>
+            <div class="notes-filter-empty">{t("filter.none")}</div>
           </Show>
           {visibleOptions().map((opt) => (
-            <label class="filter-option" title={props.optionTitle?.(opt)}>
+            <label class="notes-filter-option" title={props.optionTitle?.(opt)}>
               <input
                 type="checkbox"
                 checked={value().includes(opt)}
@@ -237,7 +240,7 @@ function MultiSelect(props: MultiSelectProps) {
   )
 }
 
-const PAGE_SIZE = 25
+const CHUNK_SIZE = 20
 
 // Keeps each attached note's composer id unique, so attaching the same note
 // twice adds two independent chips instead of colliding on the same id.
@@ -245,6 +248,7 @@ let attachSeq = 0
 
 export function NotesView() {
   const ctx = usePlugin()
+  const panel = usePanel()
   const api = ctx.main(NotesApi)
   // Localized strings for the active Opencode locale (pt-br or en-us,
   // everything else falls back to en-us).
@@ -307,7 +311,7 @@ export function NotesView() {
   // category) are applied reactively below, so deselecting an option re-filters
   // instantly.
   const [resNotes, setResNotes] = createSignal<Note[]>([])
-  const [page, setPage] = createSignal(0)
+  const [visible, setVisible] = createSignal(CHUNK_SIZE)
 
   // OS user for the read-only "Autor" field: resolved once via IPC and
   // pre-filled when a new note is created.
@@ -400,7 +404,7 @@ export function NotesView() {
   // also re-run on filter changes.
   createEffect(() => {
     const _q = query()
-    setPage(0)
+    setVisible(CHUNK_SIZE)
     void loadNotes()
   })
 
@@ -413,12 +417,6 @@ export function NotesView() {
     const nextTag = pruneSelection(tagFilter(), existsTag)
     if (nextScope !== scopeFilter()) setScopeFilter(nextScope)
     if (nextTag !== tagFilter()) setTagFilter(nextTag)
-  })
-
-  // Keep the current page valid when the filtered result shrinks.
-  createEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(filteredNotes().length / PAGE_SIZE) - 1)
-    if (page() > maxPage) setPage(maxPage)
   })
 
   // Projects come from opencode itself: the server's project list (every
@@ -698,10 +696,40 @@ export function NotesView() {
   // contrast with; a list of purely unpinned notes needs no second header.
   const hasPinned = createMemo(() => sortedNotes().some((n) => n.pinned))
   const count = createMemo(() => filteredNotes().length)
-  const pageCount = createMemo(() => Math.max(1, Math.ceil(sortedNotes().length / PAGE_SIZE)))
-  const pagedNotes = createMemo(() => {
-    const start = page() * PAGE_SIZE
-    return sortedNotes().slice(start, start + PAGE_SIZE)
+  const emptyTitle = () =>
+    query().trim()
+      ? t("empty.search", query().trim())
+      : showRetracted()
+        ? t("empty.retracted")
+        : projectOnly()
+          ? t("empty.project")
+          : t("empty.none")
+  const emptyHint = () =>
+    query().trim()
+      ? t("empty.hint.search")
+      : showRetracted()
+        ? t("empty.hint.retracted")
+        : projectOnly()
+          ? t("empty.hint.project")
+          : t("empty.hint.none")
+  const visibleNotes = createMemo(() => sortedNotes().slice(0, visible()))
+  const nav = createScrollNav({
+    hasMore: () => visible() < sortedNotes().length,
+    loadingMore: () => false,
+    loadMore: () => setVisible((value) => value + CHUNK_SIZE),
+    visible: () => panel.visible(),
+    items: () => sortedNotes().length,
+  })
+  // A new query or filter starts from the top of the list.
+  createEffect(() => {
+    query()
+    showRetracted()
+    projectOnly()
+    scopeFilter()
+    categoryFilter()
+    tagFilter()
+    setVisible(CHUNK_SIZE)
+    nav.toTop()
   })
   const revs = createMemo(() => detail()?.revisions ?? [])
 
@@ -779,12 +807,12 @@ export function NotesView() {
     const shown = max === undefined ? tags : tags.slice(0, max)
     return (
       <Show when={tags.length > 0}>
-        <span class="tags">
+        <span class="notes-tags">
           {shown.map((t) => (
-            <span class="tag">{t}</span>
+            <span class="notes-tag">{t}</span>
           ))}
           <Show when={max !== undefined && tags.length > shown.length}>
-            <span class="tag tag-more">+{tags.length - shown.length}</span>
+            <span class="notes-tag notes-tag-more">+{tags.length - shown.length}</span>
           </Show>
         </span>
       </Show>
@@ -799,12 +827,12 @@ export function NotesView() {
   // Alert states (retracted / disputed) stay in the title row, where they read
   // as the note's current status; verified moves to the pills row.
   const alertBadges = (n: Note) => (
-    <span class="badges">
+    <span class="notes-badges">
       <Show when={n.retractedAt !== undefined}>
-        <span class="badge badge-retracted">{t("badge.retracted")}</span>
+        <span class="notes-badge notes-badge-retracted">{t("badge.retracted")}</span>
       </Show>
       <Show when={n.disputedAt !== undefined}>
-        <span class="badge badge-disputed">{t("badge.disputed")}</span>
+        <span class="notes-badge notes-badge-disputed">{t("badge.disputed")}</span>
       </Show>
     </span>
   )
@@ -814,7 +842,7 @@ export function NotesView() {
   const pillBadges = (n: Note) => (
     <>
       <Show when={n.verifiedAt !== undefined && !n.disputedAt && !n.retractedAt}>
-        <span class="badge badge-verified">{t("badge.verified")}</span>
+        <span class="notes-badge notes-badge-verified">{t("badge.verified")}</span>
       </Show>
     </>
   )
@@ -833,7 +861,7 @@ export function NotesView() {
             {n.title}
           </span>
           {alertBadges(n)}
-          <ctx.ui.Icon name="chevron-grabber-vertical" size="small" class="chevron" />
+          <ctx.ui.Icon name="chevron-grabber-vertical" size="small" class="notes-chevron" />
         </button>
         <ctx.ui.Button
           class="note-attach"
@@ -850,7 +878,7 @@ export function NotesView() {
           {pillBadges(n)}
           <Show when={noteScopeLabel(n)}>
             <span
-              class="tag tag-scope"
+              class="notes-tag notes-tag-scope"
               title={
                 n.scope === "project"
                   ? n.projects.length
@@ -867,62 +895,105 @@ export function NotesView() {
       </Show>
       <Show when={selectedId() === n.id}>
         <div class="note-body">
-          <div class="meta">
+          <div class="notes-meta">
             <span>{formatTime(n.timestamp)}</span>
             <Show when={n.author}>
-              <span>por {n.author}</span>
+              <span>{t("meta.author", n.author)}</span>
             </Show>
           </div>
           <pre class="note-content">{n.content}</pre>
-          <div class="actions">
-            <button class="btn-app" onClick={n.pinned ? unpin : pin}>
-              <ctx.ui.Icon name={n.pinned ? "close-small" : "lock"} size="small" />
-              {n.pinned ? t("actions.unpin") : t("actions.pin")}
-            </button>
+          <div class="notes-actions">
+            <ctx.ui.Tooltip value={n.pinned ? t("actions.unpin") : t("actions.pin")}>
+              <ctx.ui.IconButton
+                icon={n.pinned ? "close-small" : "lock"}
+                label={n.pinned ? t("actions.unpin") : t("actions.pin")}
+                variant="ghost-muted"
+                size="small"
+                pressed={n.pinned}
+                onClick={n.pinned ? unpin : pin}
+              />
+            </ctx.ui.Tooltip>
             <Show when={!isConfirmed(n)}>
-              <button class="btn-app" onClick={confirm}>
-                <ctx.ui.Icon name="circle-check" size="small" />
-                {t("actions.confirm")}
-              </button>
+              <ctx.ui.Tooltip value={t("actions.confirm")}>
+                <ctx.ui.IconButton
+                  icon="circle-check"
+                  label={t("actions.confirm")}
+                  variant="ghost-muted"
+                  size="small"
+                  onClick={confirm}
+                />
+              </ctx.ui.Tooltip>
             </Show>
-            <button class="btn-app" onClick={dispute}>
-              <ctx.ui.Icon name="outline-hexagonal-warning" size="small" />
-              {t("actions.dispute")}
-            </button>
-            <button class="btn-app is-danger" onClick={retract}>
-              <ctx.ui.Icon name="trash" size="small" />
-              {t("actions.retract")}
-            </button>
-            <span class="actions-spacer" />
-            <button class="btn-app" onClick={() => openEdit(n)}>
-              <ctx.ui.Icon name="edit" size="small" />
-              {t("actions.edit")}
-            </button>
-            <button class="btn-app is-danger" onClick={remove}>
-              <ctx.ui.Icon name="trash" size="small" />
-              {t("actions.remove")}
-            </button>
+            <ctx.ui.Tooltip value={t("actions.dispute")}>
+              <ctx.ui.IconButton
+                icon="outline-hexagonal-warning"
+                label={t("actions.dispute")}
+                variant="ghost-muted"
+                size="small"
+                onClick={dispute}
+              />
+            </ctx.ui.Tooltip>
+            <ctx.ui.Tooltip value={t("actions.retract")}>
+              <ctx.ui.IconButton
+                icon="archive"
+                label={t("actions.retract")}
+                variant="ghost-muted"
+                size="small"
+                class="is-danger"
+                onClick={retract}
+              />
+            </ctx.ui.Tooltip>
+            <span class="notes-actions-spacer" />
+            <ctx.ui.Tooltip value={t("actions.edit")}>
+              <ctx.ui.IconButton
+                icon="edit"
+                label={t("actions.edit")}
+                variant="ghost-muted"
+                size="small"
+                onClick={() => openEdit(n)}
+              />
+            </ctx.ui.Tooltip>
+            <ctx.ui.Tooltip value={t("actions.remove")}>
+              <ctx.ui.IconButton
+                icon="trash"
+                label={t("actions.remove")}
+                variant="ghost-muted"
+                size="small"
+                class="is-danger"
+                onClick={remove}
+              />
+            </ctx.ui.Tooltip>
           </div>
-          <div class="revisions">
-            <button class="btn-app" onClick={() => setRevisionsOpen(!revisionsOpen())}>
-              <ctx.ui.Icon name="outline-rotate-clockwise" size="small" />
-              {t("revisions.label")}{revs().length > 0 ? ` · ${revs().length}` : ""}
-            </button>
+          <div class="notes-revisions">
+            <ctx.ui.Button
+              size="small"
+              variant="ghost"
+              icon="outline-rotate-clockwise"
+              onClick={() => setRevisionsOpen(!revisionsOpen())}
+            >
+              {t("revisions.label")}
+              {revs().length > 0 ? ` · ${revs().length}` : ""}
+            </ctx.ui.Button>
             <Show when={revisionsOpen()}>
-              <div class="rev-list">
+              <div class="notes-rev-list">
                 <Show when={revs().length === 0}>
-                  <div class="muted">{t("revisions.empty")}</div>
+                  <div class="notes-muted">{t("revisions.empty")}</div>
                 </Show>
                 {revs().map((r) => (
-                  <div class="rev">
-                    <div class="rev-head">
+                  <div class="notes-rev">
+                    <div class="notes-rev-head">
                       {t("revisions.head", r.id, formatTime(r.revisedAt), formatTime(r.timestamp))}
                     </div>
                     <pre class="note-content small">{r.content}</pre>
-                    <button class="btn-app" onClick={() => restore(r)}>
-                      <ctx.ui.Icon name="arrow-undo-down" size="small" />
-                      {t("prompt.restore.confirm")}
-                    </button>
+                    <ctx.ui.Tooltip value={t("prompt.restore.confirm")}>
+                      <ctx.ui.IconButton
+                        icon="arrow-undo-down"
+                        label={t("prompt.restore.confirm")}
+                        variant="ghost-muted"
+                        size="small"
+                        onClick={() => restore(r)}
+                      />
+                    </ctx.ui.Tooltip>
                   </div>
                 ))}
               </div>
@@ -946,21 +1017,17 @@ export function NotesView() {
           flex-direction: column;
           height: 100%;
           box-sizing: border-box;
-          padding: 8px 12px 6px;
+          padding: 12px;
           /* Anchor for the create/edit form overlay. */
           position: relative;
         }
         .notes-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .notes-title { display: flex; align-items: center; gap: 6px; font-weight: 550; }
+        .notes-title { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; font-size: 13px; }
         .notes-count { font-size: 12px; color: var(--v2-text-text-muted); }
-        .spacer { flex: 1; }
-        .search-row { margin-bottom: 6px; }
-        .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-        /* Filter toggle buttons (Retiradas / Projeto): the base .btn-app is
-           intentionally flat for action rows, but these need a comfortable
-           hit-area and breathing room. */
-        .chips .btn-app { padding: 4px 12px; }
-        .filter-row {
+        .notes-spacer { flex: 1; }
+        .notes-search-row { margin-bottom: 6px; }
+        .notes-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .notes-filter-row {
           display: flex;
           flex-wrap: wrap;
           gap: 6px 12px;
@@ -970,9 +1037,9 @@ export function NotesView() {
         /* Each combo is its own column; the dropdown hangs from the button.
            Cells have a minimum width so the third control (Categoria) wraps
            to its own line instead of being crushed on narrow panels. */
-        .filter-cell { position: relative; flex: 1; min-width: 118px; }
-        .filter-btn-row { display: flex; gap: 4px; align-items: stretch; }
-        .filter-btn {
+        .notes-filter-cell { position: relative; flex: 1; min-width: 118px; }
+        .notes-filter-btn-row { display: flex; gap: 4px; align-items: stretch; }
+        .notes-filter-btn {
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -991,24 +1058,24 @@ export function NotesView() {
           user-select: none;
           text-align: left;
         }
-        .filter-btn:hover { border-color: var(--v2-border-border-strong); }
-        .filter-btn:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
-        .filter-btn-label {
+        .notes-filter-btn:hover { border-color: var(--v2-border-border-strong); }
+        .notes-filter-btn:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
+        .notes-filter-btn-label {
           flex: 1;
           min-width: 0;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        .filter-btn-label.is-placeholder { color: var(--v2-text-text-faint); font-style: italic; }
+        .notes-filter-btn-label.is-placeholder { color: var(--v2-text-text-faint); font-style: italic; }
         /* Groups the placeholder/chips on the left; the caret sits at the end. */
-        .filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 6px; }
-        /* Combo button: the note-row .tag/.tags pill uses bg-layer-02 — the
+        .notes-filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 6px; }
+        /* Combo button: the note-row .notes-tag/.notes-tags pill uses bg-layer-02 — the
            SAME token as this button's background — so it reads as invisible.
            Re-skin it here as a higher-contrast filled pill that works in
            light + dark, and never truncate the text (the button has room). */
-        .filter-btn-content .tags { max-width: none; overflow: visible; gap: 6px; }
-        .filter-btn-content .tag {
+        .notes-filter-btn-content .notes-tags { max-width: none; overflow: visible; gap: 6px; }
+        .notes-filter-btn-content .notes-tag {
           background: var(--v2-overlay-simple-overlay-pressed);
           border: 1px solid var(--v2-border-border-muted);
           color: var(--v2-text-text-base);
@@ -1017,12 +1084,12 @@ export function NotesView() {
           overflow: visible;
           text-overflow: clip;
         }
-        .filter-btn-content .tag-more {
+        .notes-filter-btn-content .notes-tag-more {
           background: transparent;
           border: 0;
           color: var(--v2-text-text-muted);
         }
-        .filter-btn-caret {
+        .notes-filter-btn-caret {
           flex: 0 0 auto;
           width: 8px;
           height: 8px;
@@ -1034,7 +1101,7 @@ export function NotesView() {
         /* "Clear" control sits inside the combo, exactly where the chevron
            sits: shown only while there is a selection, it clears the whole
            selection without opening the dropdown. */
-        .filter-btn-x {
+        .notes-filter-btn-x {
           flex: 0 0 auto;
           min-width: 24px;
           height: 24px;
@@ -1046,16 +1113,16 @@ export function NotesView() {
           user-select: none;
           color: var(--v2-text-text-muted);
         }
-        .filter-btn-x:hover {
+        .notes-filter-btn-x:hover {
           background: var(--v2-overlay-simple-overlay-hover);
           color: var(--v2-text-text-base);
         }
-        .filter-btn-x:focus-visible {
+        .notes-filter-btn-x:focus-visible {
           outline: 2px solid var(--v2-border-border-focus);
           outline-offset: 0;
         }
-        .filter-clear-x { font-size: 15px; line-height: 1; }
-        .filter-panel {
+        .notes-filter-clear-x { font-size: 15px; line-height: 1; }
+        .notes-filter-panel {
           position: absolute;
           top: calc(100% + 4px);
           left: 0;
@@ -1070,8 +1137,8 @@ export function NotesView() {
         }
         /* Always mounted (checkboxes keep state); closed = hidden, not unmounted,
            so selected options never disappear on close/reopen. */
-        .filter-panel.is-hidden { display: none; }
-        .filter-panel-head {
+        .notes-filter-panel.is-hidden { display: none; }
+        .notes-filter-panel-head {
           position: sticky;
           top: 0;
           z-index: 1;
@@ -1086,10 +1153,10 @@ export function NotesView() {
           border-bottom: 1px solid var(--v2-border-border-muted);
           background: var(--v2-background-bg-base);
         }
-        .filter-panel-list { display: flex; flex-direction: column; gap: 2px; padding: 4px; }
+        .notes-filter-panel-list { display: flex; flex-direction: column; gap: 2px; padding: 4px; }
         /* Free-text option filter, shown between the head and the list. */
-        .filter-panel-search { padding: 4px 8px; }
-        .filter-panel-search-input {
+        .notes-filter-panel-search { padding: 4px 8px; }
+        .notes-filter-panel-search-input {
           width: 100%;
           box-sizing: border-box;
           padding: 3px 6px;
@@ -1100,12 +1167,12 @@ export function NotesView() {
           font: inherit;
           font-size: 12.5px;
         }
-        .filter-panel-search-input:focus {
+        .notes-filter-panel-search-input:focus {
           outline: 2px solid var(--v2-border-border-focus);
           outline-offset: 0;
         }
-        .filter-empty { padding: 12px 8px; font-size: 12.5px; color: var(--v2-text-text-faint); }
-        .filter-option {
+        .notes-filter-empty { padding: 12px 8px; font-size: 12.5px; color: var(--v2-text-text-faint); }
+        .notes-filter-option {
           display: flex;
           align-items: center;
           gap: 8px;
@@ -1115,15 +1182,14 @@ export function NotesView() {
           font-size: 12.5px;
           color: var(--v2-text-text-base);
         }
-        .filter-option:hover { background: var(--v2-overlay-simple-overlay-pressed); }
-        .filter-option input[type="checkbox"] {
+        .notes-filter-option:hover { background: var(--v2-overlay-simple-overlay-pressed); }
+        .notes-filter-option input[type="checkbox"] {
           margin: 0;
           flex: 0 0 auto;
           accent-color: var(--v2-state-fg-success);
         }
-        .filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .filter-panel-head .btn-app { font-size: 11px; padding: 2px 8px; color: var(--v2-text-text-muted); }
-        .filter-panel-head .btn-app:hover { color: var(--v2-text-text-base); }
+        .notes-filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .notes-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
         .notes { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 0; }
         /* Notes open in labelled sections (pinned first, then the rest); the
            group headers replace the old "pinned" pill and divider. */
@@ -1151,7 +1217,7 @@ export function NotesView() {
         .note.selected { border-color: var(--v2-border-border-focus); }
         /* Tags use the same bg-layer-02 token as the card, which would make them
            invisible; re-skin them slightly brighter inside the card. */
-        .note .tag { background: var(--v2-overlay-simple-overlay-pressed); }
+        .note .notes-tag { background: var(--v2-overlay-simple-overlay-pressed); }
         .note-row { display: flex; align-items: center; min-width: 0; }
         .note-attach { flex: 0 0 auto; margin-right: 6px; }
         .note-head {
@@ -1175,7 +1241,7 @@ export function NotesView() {
         .note-id { font-weight: 550; color: var(--v2-text-text-muted); }
         .note-cat { font-size: 11px; color: var(--v2-text-text-faint); }
         .note-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tags {
+        .notes-tags {
           display: inline-flex;
           align-items: center;
           gap: 4px;
@@ -1184,7 +1250,7 @@ export function NotesView() {
           max-width: 45%;
           overflow: hidden;
         }
-        .tag {
+        .notes-tag {
           font-size: 10.5px;
           line-height: 1.6;
           border-radius: 999px;
@@ -1196,9 +1262,9 @@ export function NotesView() {
           text-overflow: ellipsis;
           max-width: 110px;
         }
-        .tag-more { color: var(--v2-text-text-faint); }
+        .notes-tag-more { color: var(--v2-text-text-faint); }
         /* Scope reads as hierarchy, not as a free-form tag. */
-        .tag-scope { color: var(--v2-text-text-base); border: 1px solid var(--v2-border-border-muted); }
+        .notes-tag-scope { color: var(--v2-text-text-base); border: 1px solid var(--v2-border-border-muted); }
         /* Pills (tags + scope) live on their own line directly under the title. */
         .note-pills {
           display: flex;
@@ -1208,13 +1274,13 @@ export function NotesView() {
           min-width: 0;
           padding: 4px 12px 6px;
         }
-        .note-pills .tags { max-width: none; flex-wrap: wrap; }
-        .badges { display: flex; gap: 4px; flex: 0 0 auto; }        .badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
-        .badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
-        .badge-retracted { border: 1px solid var(--v2-state-border-danger); color: var(--v2-state-fg-danger); }
-        .badge-disputed { border: 1px solid var(--v2-state-border-warning); color: var(--v2-state-fg-warning); }
+        .note-pills .notes-tags { max-width: none; flex-wrap: wrap; }
+        .notes-badges { display: flex; gap: 4px; flex: 0 0 auto; }        .notes-badge { font-size: 11px; line-height: 1.4; border-radius: 999px; padding: 0 7px; }
+        .notes-badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
+        .notes-badge-retracted { border: 1px solid var(--v2-state-border-danger); color: var(--v2-state-fg-danger); }
+        .notes-badge-disputed { border: 1px solid var(--v2-state-border-warning); color: var(--v2-state-fg-warning); }
         .note-body { padding: 8px 12px 12px; border-top: 1px solid var(--v2-border-border-muted); }
-        .meta {
+        .notes-meta {
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
@@ -1222,7 +1288,7 @@ export function NotesView() {
           color: var(--v2-text-text-faint);
           margin-bottom: 6px;
         }
-        .meta .tags { max-width: none; flex-wrap: wrap; }
+        .notes-meta .notes-tags { max-width: none; flex-wrap: wrap; }
         .note-content {
           margin: 0;
           white-space: pre-wrap;
@@ -1234,16 +1300,13 @@ export function NotesView() {
           overflow-y: auto;
         }
         .note-content.small { max-height: 120px; font-size: 11.5px; }
-        .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
-        .actions-spacer { flex: 1 1 0; min-width: 0; }
-        .revisions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-        .rev { border: 1px solid var(--v2-border-border-muted); border-radius: 4px; padding: 8px; }
-        .rev-head { font-size: 11.5px; font-weight: 550; color: var(--v2-text-text-faint); margin-bottom: 4px; }
-        .rev-list { display: flex; flex-direction: column; gap: 8px; }
-        .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 8px; color: var(--v2-text-text-faint); text-align: center; }
-        .empty-icon { opacity: 0.55; margin-bottom: 4px; }
-        .muted { font-size: 11.5px; color: var(--v2-text-text-faint); text-align: center; }
-        .err {
+        .notes-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+        .notes-actions-spacer { flex: 1 1 0; min-width: 0; }
+        .notes-revisions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+        .notes-rev { border: 1px solid var(--v2-border-border-muted); border-radius: 4px; padding: 8px; }
+        .notes-rev-head { font-size: 11.5px; font-weight: 550; color: var(--v2-text-text-faint); margin-bottom: 4px; }
+        .notes-rev-list { display: flex; flex-direction: column; gap: 8px; }
+        .notes-muted { font-size: 11.5px; color: var(--v2-text-text-faint); text-align: center; }
           border: 1px solid var(--v2-state-border-danger);
           border-radius: 4px;
           padding: 8px 10px;
@@ -1251,7 +1314,7 @@ export function NotesView() {
           font-size: 12.5px;
           color: var(--v2-state-fg-danger);
         }
-        .form {
+        .notes-form {
           display: flex;
           flex-direction: column;
           gap: 10px;
@@ -1267,7 +1330,7 @@ export function NotesView() {
         /* Floating dialog: the create/edit form no longer pushes the list
            down — it overlays it (dimmed backdrop) while the list keeps its
            scroll and position behind. */
-        .form-overlay {
+        .notes-form-overlay {
           position: absolute;
           inset: 0;
           z-index: 5;
@@ -1279,10 +1342,10 @@ export function NotesView() {
           background: color-mix(in srgb, rgb(0 0 0) 40%, transparent);
           backdrop-filter: blur(2px);
         }
-        .form-overlay .form {
+        .notes-form-overlay .notes-form {
           box-shadow: 0 12px 44px rgb(0 0 0 / 0.5);
         }
-        .form > label {
+        .notes-form > label {
           display: flex;
           flex-direction: column;
           gap: 3px;
@@ -1290,7 +1353,7 @@ export function NotesView() {
           font-weight: 550;
           color: var(--v2-text-text-muted);
         }
-        .form textarea {
+        .notes-form textarea {
           resize: vertical;
           min-height: 90px;
           border: 1px solid var(--v2-border-border-muted);
@@ -1303,7 +1366,7 @@ export function NotesView() {
           padding: 6px 8px;
           white-space: pre-wrap;
         }
-        .form select {
+        .notes-form select {
           border: 1px solid var(--v2-border-border-muted);
           border-radius: 4px;
           background: var(--v2-background-bg-layer-02);
@@ -1313,23 +1376,23 @@ export function NotesView() {
         }
         /* The native dropdown paints its own white surface on Linux, so the
            options must carry the theme colors or their text washes out. */
-        .form select option {
+        .notes-form select option {
           background: var(--v2-background-bg-layer-02);
           color: var(--v2-text-text-base);
         }
-        .form textarea:focus,
-        .form select:focus {
+        .notes-form textarea:focus,
+        .notes-form select:focus {
           outline: 2px solid var(--v2-border-border-focus);
           outline-offset: 0;
           background: var(--v2-background-bg-layer-02);
         }
         /* Side-by-side row: categoria + escopo. */
-        .form-grid {
+        .notes-form-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 10px;
         }
-        .form-grid > label {
+        .notes-form-grid > label {
           display: flex;
           flex-direction: column;
           gap: 3px;
@@ -1339,7 +1402,7 @@ export function NotesView() {
         }
         /* Read-only author field: styled like the other inputs, auto-filled
            from the OS user (whoami) and not editable. */
-        .form-author {
+        .notes-form-author {
           border: 1px solid var(--v2-border-border-muted);
           border-radius: 4px;
           background: var(--v2-background-bg-layer-02);
@@ -1349,74 +1412,57 @@ export function NotesView() {
           cursor: default;
           user-select: all;
         }
-        .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
-        .pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 4px 6px; }
-        .page-label { font-size: 11.5px; color: var(--v2-text-text-faint); }
+        .notes-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
-        /* Borderless app-style button (no border), using the theme tokens. */
-        .btn-app {
+        /* Filter toggle (segmented control): the host button has no pressed state. */
+        .notes-toggle {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 6px;
           border: 0;
           border-radius: 6px;
           font: inherit;
-          font-size: 13px;
+          font-size: 11.5px;
           line-height: 1.4;
-          padding: 2px 10px;
+          padding: 3px 9px;
           cursor: pointer;
           user-select: none;
           background: transparent;
-          color: var(--v2-text-text-faint);
+          color: var(--v2-text-text-muted);
         }
-        .btn-app:hover {
+        .notes-toggle:hover {
           background: var(--v2-overlay-simple-overlay-hover);
           color: var(--v2-text-text-base);
         }
-        .btn-app.is-danger:hover {
-          background: var(--v2-state-bg-danger);
-          color: var(--v2-state-fg-danger);
-        }
-        .btn-app:focus-visible {
+        .notes-toggle:focus-visible {
           outline: 2px solid var(--v2-border-border-focus);
           outline-offset: 0;
         }
-        /* "Nova nota" CTA: subtle resting pill, like the app's New session. */
-        .btn-app.is-pill {
-          background: var(--v2-background-bg-layer-02);
-          color: var(--v2-text-text-muted);
-        }
-        .btn-app.is-pill:hover {
-          background: var(--v2-overlay-simple-overlay-pressed);
-          color: var(--v2-text-text-base);
-        }
-        /* Active filter chip: subtle filled state, no border. */
-        .btn-app.is-active {
+        .notes-toggle.is-active {
           background: var(--v2-background-bg-layer-02);
           color: var(--v2-text-text-base);
-          font-weight: 550;
+          font-weight: 600;
         }
-        .btn-app.is-active:hover {
-          background: var(--v2-overlay-simple-overlay-pressed);
-          color: var(--v2-text-text-base);
-        }
+        .notes-toggle.is-active:hover { background: var(--v2-overlay-simple-overlay-pressed); }
+
+        /* Destructive icon buttons (delete/retract) in a row of ghost buttons. */
+        .notes-actions .is-danger:hover { color: var(--v2-state-fg-danger); }
       `}</style>
+      <style>{SHARED_CSS}</style>
 
       <header class="notes-head">
-        <span class="notes-title">
+        <h2 class="notes-title">
           <ctx.ui.Icon name="file-document" size="small" />
           {t("notesTitle")}
-        </span>
+        </h2>
         <span class="notes-count">{t("notesCount", count())}</span>
-        <span class="spacer" />
-        <button class="btn-app is-pill" onClick={openAdd}>
-          <ctx.ui.Icon name="plus" size="small" />
+        <span class="notes-spacer" />
+        <ctx.ui.Button size="small" variant="ghost" icon="plus" onClick={openAdd}>
           {t("newNote")}
-        </button>
+        </ctx.ui.Button>
       </header>
 
-      <div class="search-row">
+      <div class="notes-search-row">
         <ctx.ui.TextInput
           type="search"
           label={t("searchLabel")}
@@ -1426,22 +1472,24 @@ export function NotesView() {
         />
       </div>
 
-      <div class="chips">
+      <div class="notes-chips">
         <button
-          class={`btn-app ${showRetracted() ? "is-active" : ""}`}
+          type="button"
+          class={`notes-toggle ${showRetracted() ? "is-active" : ""}`}
           onClick={() => setShowRetracted(!showRetracted())}
         >
           {t("filterRetracted")}
         </button>
         <button
-          class={`btn-app ${projectOnly() ? "is-active" : ""}`}
+          type="button"
+          class={`notes-toggle ${projectOnly() ? "is-active" : ""}`}
           onClick={() => setProjectOnly(!projectOnly())}
         >
           {t("filterProject")}
         </button>
       </div>
 
-        <div class="filter-row">
+        <div class="notes-filter-row">
           <Show when={scopeOptions().length > 0}>
             <MultiSelect
               label={t("filter.scope.label")}
@@ -1482,25 +1530,22 @@ export function NotesView() {
         </div>
 
       <Show when={loading()}>
-        <div class="loader-row">
-          <ctx.ui.Loader size="small" />
-          <span>{t("loading")}</span>
-        </div>
+        <LoadingRow label={t("loading")} />
       </Show>
       <Show when={error() !== ""}>
-        <div class="err">{error()}</div>
+        <ErrorBanner message={error()} />
       </Show>
 
       <Show when={formOpen()}>
         <section
-          class="form-overlay"
+          class="notes-form-overlay"
           aria-label={form().mode === "add" ? t("form.overlay.add") : t("form.overlay.edit")}
           onClick={(e) => {
             // Click on the dimmed backdrop (not the form itself) closes it.
             if (e.target === e.currentTarget) setFormOpen(false)
           }}
         >
-        <form class="form" onSubmit={(e) => { e.preventDefault(); void handleAddOrEdit() }}>
+        <form class="notes-form" onSubmit={(e) => { e.preventDefault(); void handleAddOrEdit() }}>
           <label>
             {t("form.title.label")}
             <ctx.ui.TextInput
@@ -1522,13 +1567,13 @@ export function NotesView() {
             {t("form.author.label")}
             <input
               type="text"
-              class="form-author"
+              class="notes-form-author"
               readOnly
               value={form().author}
               placeholder={t("form.author.placeholder")}
             />
           </label>
-          <div class="form-grid">
+          <div class="notes-form-grid">
             <label>
               {t("form.category.label")}
               <select
@@ -1589,7 +1634,7 @@ export function NotesView() {
               onInput={(v) => setForm((s) => ({ ...s, tags: v }))}
             />
           </label>
-          <div class="form-actions">
+          <div class="notes-form-actions">
             <ctx.ui.Button variant="ghost" onClick={() => setFormOpen(false)}>
               {t("form.cancel")}
             </ctx.ui.Button>
@@ -1606,45 +1651,21 @@ export function NotesView() {
         </section>
       </Show>
 
-      <div class="notes">
+      <div class="notes-body">
+        <div
+          class="notes os-scroll"
+          ref={nav.ref}
+          onKeyDown={nav.onKeyDown}
+          tabIndex={nav.scrollable() ? 0 : undefined}
+          role="region"
+          aria-label={t("scroll.region")}
+        >
         <Show when={filteredNotes().length === 0 && !loading()}>
-          <div class="empty">
-            <ctx.ui.Icon name="file-document" size="large" class="empty-icon" />
-            <div>
-              <Show when={query().trim()}>
-                {t("empty.search", query().trim())}
-              </Show>
-              <Show when={!query().trim() && showRetracted()}>
-                {t("empty.retracted")}
-              </Show>
-              <Show when={!query().trim() && !showRetracted() && projectOnly()}>
-                {t("empty.project")}
-              </Show>
-              <Show when={!query().trim() && !showRetracted() && !projectOnly()}>
-                {t("empty.none")}
-              </Show>
-            </div>
-            <div class="muted">
-              <Show when={query().trim()}>
-                {t("empty.hint.search")}
-              </Show>
-              <Show when={!query().trim() && showRetracted()}>
-                {t("empty.hint.retracted")}
-              </Show>
-              <Show when={!query().trim() && !showRetracted() && projectOnly()}>
-                {t("empty.hint.project")}
-              </Show>
-              <Show when={!query().trim() && !showRetracted() && !projectOnly()}>
-                {t("empty.hint.none")}
-              </Show>
-            </div>
-          </div>
+          <EmptyState icon="file-document" title={emptyTitle()} hint={emptyHint()} />
         </Show>
-        {pagedNotes().map((n, i, arr) => (
+        {visibleNotes().map((n, i, arr) => (
           <>
-            {/* Each section opens with its own header, matching the old "pinned"
-                pill's role. A header also repeats when a section continues at
-                the top of the next page. */}
+            {/* Each section opens with its own header. */}
             <Show when={n.pinned && (i === 0 || !arr[i - 1]?.pinned)}>
               <div class="note-group-head">{t("group.pinned")}</div>
             </Show>
@@ -1652,7 +1673,7 @@ export function NotesView() {
               when={
                 !n.pinned &&
                 hasPinned() &&
-                (i > 0 ? arr[i - 1]?.pinned : page() > 0)
+                (i > 0 ? arr[i - 1]?.pinned : false)
               }
             >
               <div class="note-group-head">{t("group.others")}</div>
@@ -1660,31 +1681,9 @@ export function NotesView() {
             {card(n)}
           </>
         ))}
-      </div>
-
-      <Show when={pageCount() > 1}>
-        <div class="pager">
-          <ctx.ui.Button
-            size="small"
-            variant="ghost-muted"
-            icon="outline-arrow-left"
-            disabled={page() === 0}
-            onClick={() => setPage(page() - 1)}
-          >
-            {t("page.previous")}
-          </ctx.ui.Button>
-          <span class="page-label">{t("page.label", page() + 1, pageCount())}</span>
-          <ctx.ui.Button
-            size="small"
-            variant="ghost-muted"
-            icon="outline-arrow-right"
-            disabled={page() >= pageCount() - 1}
-            onClick={() => setPage(page() + 1)}
-          >
-            {t("page.next")}
-          </ctx.ui.Button>
         </div>
-      </Show>
+        <ScrollNav nav={nav} topLabel={t("scroll.top")} bottomLabel={t("scroll.bottom")} />
+      </div>
     </div>
   )
 }

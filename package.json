@@ -1,5 +1,5 @@
 {
-  "name": "opencode-notes",
+  "name": "@hitalloexiled/opencode-notes",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,6 +17,9 @@
     "typecheck:gui": "tsc --noEmit -p tsconfig.gui.json",
     "gui:build": "vite build",
     "gui:watch": "vite --watch"
+  },
+  "dependencies": {
+    "@hitalloexiled/opencode-shared": "github:HitalloExiled/opencode-shared#86b246394d17ebe82c9ca2648dedc03547cf388a"
   },
   "devDependencies": {
     "@opencode/plugin": "2.2.0",
