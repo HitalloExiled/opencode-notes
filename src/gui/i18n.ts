@@ -1,31 +1,6 @@
-/* ------------------------------------------------------------------ */
-/* i18n                                                               */
-/* ------------------------------------------------------------------ */
+/* Notes GUI copy. PT-BR and EN-US; EN-US is the fallback. */
 
-/**
- * Localization for the Notes GUI, following the Opencode locale but
- * supporting only two bundles — `pt-br` and `en-us` — with everything
- * else (unknown/missing locales) falling back to `en-us`.
- *
- * `en-us` is the default table: keys missing from the `pt-br` table are
- * served from it, so an incomplete translation can never lose a string.
- */
-
-import { createMemo } from "solid-js"
-import type { Accessor } from "solid-js"
-import { usePlugin } from "@opencode/plugin/gui"
-
-export type SupportedLocale = "en-us" | "pt-br"
-
-/**
- * Maps the raw Opencode locale tag (IETF, e.g. `"pt-BR"`, `"en-US"`, `"en"`)
- * to one of the two supported bundles. Only tags that clearly indicate
- * Portuguese resolve to `pt-br`; everything else falls back to `en-us`.
- */
-export function supportedLocale(raw?: string): SupportedLocale {
-  const tag = (raw ?? "").trim().toLowerCase().replace(/[-_]/g, "")
-  return tag.startsWith("pt") ? "pt-br" : "en-us"
-}
+import { createI18n } from "opencode-shared/gui";
 
 const EN = {
   notesTitle: "Notes",
@@ -47,6 +22,7 @@ const EN = {
   "filter.tag.label": "Tag",
   "filter.tag.placeholder": "All tags",
   "filter.clear": "Clear",
+  "filter.clearLabel": "Clear {0}",
   "filter.search": "Filter…",
   "filter.none": "No matches",
   "category.problem": "Problem",
@@ -155,6 +131,7 @@ const PT: Record<keyof typeof EN, string> = {
   "filter.tag.label": "Tag",
   "filter.tag.placeholder": "Todas as tags",
   "filter.clear": "Limpar",
+  "filter.clearLabel": "Limpar {0}",
   "filter.search": "Filtrar…",
   "filter.none": "Nada",
   "category.problem": "Problema",
@@ -242,34 +219,9 @@ const PT: Record<keyof typeof EN, string> = {
   "form.overlay.edit": "Editar nota",
 }
 
-const tables: Record<SupportedLocale, Record<string, string>> = {
-  "en-us": EN,
-  "pt-br": { ...EN, ...PT },
-}
+const { useLocale, useT } = createI18n(EN, PT)
 
-/** Reactive locale: `pt-br` when Opencode is Portuguese, `en-us` otherwise. */
-export function useLocale(): Accessor<SupportedLocale> {
-  const ctx = usePlugin()
-  return createMemo(() => supportedLocale(ctx.locale.locale()))
-}
-
-/**
- * Returns a `t` function that looks up a key in the active bundle and
- * interpolates positional `{0}`, `{1}`… placeholders from the arguments.
- * Unknown keys fall back to the first argument (used by callers that pass
- * a raw display value, e.g. `t("category.${v}", v)`), and then to the key
- * itself — the UI should never render an empty string.
- */
-export function useT(): (key: string, ...args: unknown[]) => string {
-  const locale = useLocale()
-  return (key: string, ...args: unknown[]): string => {
-    const table = tables[locale()]
-    const value = table[key] ?? (typeof args[0] === "string" ? args[0] : key)
-    return value.replace(/\{(\d+)\}/g, (_, i: string) =>
-      String(args[Number(i)] ?? "")
-    )
-  }
-}
+export { useLocale, useT }
 
 /**
  * Display label for a note's scope: the type names are localized; the project

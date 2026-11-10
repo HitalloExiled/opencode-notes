@@ -181,7 +181,7 @@ function MultiSelect(props: MultiSelectProps) {
             <span
               class="notes-filter-btn-x"
               role="button"
-              aria-label={`Limpar ${label}`}
+              aria-label={t("filter.clearLabel", label)}
               tabIndex={0}
               onClick={(e) => { e.stopPropagation(); clear(); }}
               onKeyDown={(e) => {

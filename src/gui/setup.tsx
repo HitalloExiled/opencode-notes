@@ -60,7 +60,7 @@ export function setup(ctx: SetupContext<never>): void {
     menu: "session.panel",
     id: "notes",
     // Native panel actions use orders 10-30; plugin tabs go after them.
-    order: 40,
+    order: 41,
     title: text("Notas", "Notes"),
     icon: "file-document",
     run: () => {
