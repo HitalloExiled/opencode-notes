@@ -1099,20 +1099,6 @@ export function NotesView() {
           transition: transform 0.12s ease;
         }
         /* "Clear" control sits inside the combo, exactly where the chevron
-           sits: shown only while there is a selection, it clears the whole
-           selection without opening the dropdown. */
-        .notes-filter-btn-x {
-          flex: 0 0 auto;
-          min-width: 24px;
-          height: 24px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
-          cursor: pointer;
-          user-select: none;
-          color: var(--v2-text-text-muted);
-        }
         .notes-filter-btn-x:hover {
           background: var(--v2-overlay-simple-overlay-hover);
           color: var(--v2-text-text-base);
@@ -1307,13 +1293,6 @@ export function NotesView() {
         .notes-rev-head { font-size: 11.5px; font-weight: 550; color: var(--v2-text-text-faint); margin-bottom: 4px; }
         .notes-rev-list { display: flex; flex-direction: column; gap: 8px; }
         .notes-muted { font-size: 11.5px; color: var(--v2-text-text-faint); text-align: center; }
-          border: 1px solid var(--v2-state-border-danger);
-          border-radius: 4px;
-          padding: 8px 10px;
-          margin-bottom: 4px;
-          font-size: 12.5px;
-          color: var(--v2-state-fg-danger);
-        }
         .notes-form {
           display: flex;
           flex-direction: column;
