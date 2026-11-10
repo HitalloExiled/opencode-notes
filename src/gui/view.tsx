@@ -1190,7 +1190,7 @@ export function NotesView() {
         }
         .notes-filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .notes-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-        .notes { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 0; }
+        .notes { overflow-y: auto; flex: 1; min-height: 0; }
         /* Notes open in labelled sections (pinned first, then the rest); the
            group headers replace the old "pinned" pill and divider. */
         .note-group-head {
@@ -1653,7 +1653,7 @@ export function NotesView() {
 
       <div class="notes-body">
         <div
-          class="notes os-scroll"
+          class="notes os-scroll os-list"
           ref={nav.ref}
           onKeyDown={nav.onKeyDown}
           tabIndex={nav.scrollable() ? 0 : undefined}
