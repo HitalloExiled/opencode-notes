@@ -1211,10 +1211,7 @@ export function NotesView() {
           overflow: hidden;
           flex: 0 0 auto;
         }
-        .note:hover {
-          border-color: var(--v2-border-border-strong);
-          background-image: linear-gradient(var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover));
-        }
+        .note:hover { border-color: var(--v2-border-border-strong); }
         .note.pinned { border-color: var(--v2-border-border-strong); }
         .note.retracted { opacity: 0.55; }
         .note.selected { border-color: var(--v2-border-border-focus); }
@@ -1224,6 +1221,10 @@ export function NotesView() {
         .note-row { display: flex; align-items: center; min-width: 0; }
         .note-attach { flex: 0 0 auto; margin-right: 6px; }
         .note-header { cursor: pointer; }
+        /* The header is the click target: only it gets the hover surface. */
+        .note-header:hover {
+          background-image: linear-gradient(var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover));
+        }
         .note-header:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
         .note-head {
           display: flex;
@@ -1276,7 +1277,11 @@ export function NotesView() {
         .notes-badge-verified { border: 1px solid var(--v2-state-border-success); color: var(--v2-state-fg-success); }
         .notes-badge-retracted { border: 1px solid var(--v2-state-border-danger); color: var(--v2-state-fg-danger); }
         .notes-badge-disputed { border: 1px solid var(--v2-state-border-warning); color: var(--v2-state-fg-warning); }
-        .note-body { padding: 8px 12px 12px; border-top: 1px solid var(--v2-border-border-muted); }
+        .note-body {
+          background: var(--v2-background-bg-layer-01);
+          padding: 8px 12px 12px;
+          border-top: 1px solid var(--v2-border-border-muted);
+        }
         .notes-meta {
           display: flex;
           gap: 8px;
