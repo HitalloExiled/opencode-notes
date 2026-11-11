@@ -1211,7 +1211,10 @@ export function NotesView() {
           overflow: hidden;
           flex: 0 0 auto;
         }
-        .note:hover { border-color: var(--v2-border-border-strong); }
+        .note:hover {
+          border-color: var(--v2-border-border-strong);
+          background-image: linear-gradient(var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover));
+        }
         .note.pinned { border-color: var(--v2-border-border-strong); }
         .note.retracted { opacity: 0.55; }
         .note.selected { border-color: var(--v2-border-border-focus); }
