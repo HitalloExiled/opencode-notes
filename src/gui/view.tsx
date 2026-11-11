@@ -1211,7 +1211,10 @@ export function NotesView() {
           overflow: hidden;
           flex: 0 0 auto;
         }
-        .note:hover { border-color: var(--v2-border-border-strong); }
+        .note:hover {
+          border-color: var(--v2-border-border-strong);
+          background-image: linear-gradient(var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover));
+        }
         .note.pinned { border-color: var(--v2-border-border-strong); }
         .note.retracted { opacity: 0.55; }
         .note.selected { border-color: var(--v2-border-border-focus); }
@@ -1221,10 +1224,6 @@ export function NotesView() {
         .note-row { display: flex; align-items: center; min-width: 0; }
         .note-attach { flex: 0 0 auto; margin-right: 6px; }
         .note-header { cursor: pointer; }
-        /* The header is the click target: only it gets the hover surface. */
-        .note-header:hover {
-          background-image: linear-gradient(var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover));
-        }
         .note-header:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
         .note-head {
           display: flex;
