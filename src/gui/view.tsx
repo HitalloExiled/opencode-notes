@@ -729,7 +729,7 @@ export function NotesView() {
     categoryFilter()
     tagFilter()
     setVisible(CHUNK_SIZE)
-    nav.toTop()
+    nav.reset()
   })
   const revs = createMemo(() => detail()?.revisions ?? [])
 
