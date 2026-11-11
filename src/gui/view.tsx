@@ -853,46 +853,60 @@ export function NotesView() {
         n.retractedAt !== undefined ? "retracted" : ""
       } ${selectedId() === n.id ? "selected" : ""}`}
     >
-      <div class="note-row">
-        <button class="note-head" onClick={() => toggleNote(n.id)}>
-          <span class="note-id">#{n.id}</span>
-          <span class="note-cat" title={n.category}>{categoryLabel(n.category)}</span>
-          <span class="note-title" title={n.title}>
-            {n.title}
-          </span>
-          {alertBadges(n)}
-          <ctx.ui.Icon name="chevron-grabber-vertical" size="small" class="notes-chevron" />
-        </button>
-        <ctx.ui.Button
-          class="note-attach"
-          size="small"
-          variant="ghost-muted"
-          icon="plus"
-          onClick={() => addToContext(n)}
-        >
-          {t("actions.attachTooltip")}
-        </ctx.ui.Button>
-      </div>
-      <Show when={tagsOf(n).length > 0 || noteScopeLabel(n)}>
-        <div class="note-pills">
-          {pillBadges(n)}
-          <Show when={noteScopeLabel(n)}>
-            <span
-              class="notes-tag notes-tag-scope"
-              title={
-                n.scope === "project"
-                  ? n.projects.length
-                    ? n.projects.join(", ")
-                    : t("scopeProject")
-                  : noteScopeLabel(n)
-              }
-            >
-              {noteScopeLabel(n)}
-            </span>
-          </Show>
-          {tagChips(n, 2)}
+      <div
+        class="note-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={selectedId() === n.id}
+        onClick={() => toggleNote(n.id)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key !== "Enter" && event.key !== " ") return
+          event.preventDefault()
+          toggleNote(n.id)
+        }}
+      >
+        <div class="note-row">
+          <div class="note-head">
+            <span class="note-id">#{n.id}</span>
+            <span class="note-cat" title={n.category}>{categoryLabel(n.category)}</span>
+            <span class="note-title">{n.title}</span>
+            {alertBadges(n)}
+          </div>
+          <ctx.ui.Button
+            class="note-attach"
+            size="small"
+            variant="ghost-muted"
+            icon="plus"
+            onClick={(event) => {
+              event.stopPropagation()
+              void addToContext(n)
+            }}
+          >
+            {t("actions.attachTooltip")}
+          </ctx.ui.Button>
         </div>
-      </Show>
+        <Show when={tagsOf(n).length > 0 || noteScopeLabel(n)}>
+          <div class="note-pills">
+            {pillBadges(n)}
+            <Show when={noteScopeLabel(n)}>
+              <span
+                class="notes-tag notes-tag-scope"
+                title={
+                  n.scope === "project"
+                    ? n.projects.length
+                      ? n.projects.join(", ")
+                      : t("scopeProject")
+                    : noteScopeLabel(n)
+                }
+              >
+                {noteScopeLabel(n)}
+              </span>
+            </Show>
+            {tagChips(n, 2)}
+          </div>
+        </Show>
+      </div>
       <Show when={selectedId() === n.id}>
         <div class="note-body">
           <div class="notes-meta">
@@ -1206,24 +1220,18 @@ export function NotesView() {
         .note .notes-tag { background: var(--v2-overlay-simple-overlay-pressed); }
         .note-row { display: flex; align-items: center; min-width: 0; }
         .note-attach { flex: 0 0 auto; margin-right: 6px; }
+        .note-header { cursor: pointer; }
+        .note-header:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
         .note-head {
           display: flex;
           align-items: center;
           gap: 8px;
           flex: 1;
           min-width: 0;
-          text-align: left;
-          background: transparent;
-          border: 0;
-          font: inherit;
-          color: inherit;
-          cursor: pointer;
           box-sizing: border-box;
           min-height: 34px;
           padding: 6px 10px 6px 12px;
         }
-        .note-head:hover { background: var(--v2-overlay-simple-overlay-hover); }
-        .note-head:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: -2px; }
         .note-id { font-weight: 550; color: var(--v2-text-text-muted); }
         .note-cat { font-size: 11px; color: var(--v2-text-text-faint); }
         .note-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
