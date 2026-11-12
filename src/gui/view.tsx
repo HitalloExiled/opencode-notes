@@ -246,6 +246,10 @@ const CHUNK_SIZE = 20
 // twice adds two independent chips instead of colliding on the same id.
 let attachSeq = 0
 
+// How note bodies are displayed. Module scope keeps the choice across panel
+// remounts, like the stats prompt viewer.
+const [renderMode, setRenderMode] = createSignal<"markdown" | "raw">("markdown")
+
 export function NotesView() {
   const ctx = usePlugin()
   const panel = usePanel()
@@ -253,6 +257,9 @@ export function NotesView() {
   // Localized strings for the active Opencode locale (pt-br or en-us,
   // everything else falls back to en-us).
   const t = useT()
+  // The host renders Markdown as the timeline does (headings, lists, tables,
+  // links, highlighted code).
+  const Markdown = ctx.ui.Markdown
 
   // Display label for a stored category value (data stays in English;
   // falls back to the raw value for categories outside the known list).
@@ -914,8 +921,31 @@ export function NotesView() {
             <Show when={n.author}>
               <span>{t("meta.author", n.author)}</span>
             </Show>
+            <span class="note-render" role="group" aria-label={t("render.label")}>
+              <ctx.ui.Tooltip
+                value={
+                  renderMode() === "raw" ? t("render.showMarkdown") : t("render.showSource")
+                }
+              >
+                <ctx.ui.IconButton
+                  icon={renderMode() === "raw" ? "outline-eye" : "code"}
+                  label={
+                    renderMode() === "raw" ? t("render.showMarkdown") : t("render.showSource")
+                  }
+                  variant="ghost-muted"
+                  size="small"
+                  pressed={renderMode() === "raw"}
+                  onClick={() => setRenderMode(renderMode() === "raw" ? "markdown" : "raw")}
+                />
+              </ctx.ui.Tooltip>
+            </span>
           </div>
-          <pre class="note-content">{n.content}</pre>
+          <Show
+            when={renderMode() === "markdown"}
+            fallback={<pre class="note-content note-raw">{n.content}</pre>}
+          >
+            <Markdown text={n.content} class="note-content note-markdown" />
+          </Show>
           <div class="notes-actions">
             <ctx.ui.Tooltip value={n.pinned ? t("actions.unpin") : t("actions.pin")}>
               <ctx.ui.IconButton
@@ -998,7 +1028,12 @@ export function NotesView() {
                     <div class="notes-rev-head">
                       {t("revisions.head", r.id, formatTime(r.revisedAt), formatTime(r.timestamp))}
                     </div>
-                    <pre class="note-content small">{r.content}</pre>
+                    <Show
+                      when={renderMode() === "markdown"}
+                      fallback={<pre class="note-content note-raw small">{r.content}</pre>}
+                    >
+                      <Markdown text={r.content} class="note-content note-markdown small" />
+                    </Show>
                     <ctx.ui.Tooltip value={t("prompt.restore.confirm")}>
                       <ctx.ui.IconButton
                         icon="arrow-undo-down"
@@ -1283,6 +1318,7 @@ export function NotesView() {
         }
         .notes-meta {
           display: flex;
+          align-items: center;
           gap: 8px;
           flex-wrap: wrap;
           font-size: 11.5px;
@@ -1290,17 +1326,26 @@ export function NotesView() {
           margin-bottom: 6px;
         }
         .notes-meta .notes-tags { max-width: none; flex-wrap: wrap; }
+        .note-render { display: inline-flex; margin-left: auto; }
         .note-content {
           margin: 0;
-          white-space: pre-wrap;
-          font-family: var(--font-family-code);
           font-size: 12.5px;
           line-height: 1.5;
           color: var(--v2-text-text-muted);
           max-height: 280px;
           overflow-y: auto;
+          overflow-wrap: anywhere;
+          user-select: text;
         }
+        .note-content * { user-select: text; }
         .note-content.small { max-height: 120px; font-size: 11.5px; }
+        .note-raw {
+          white-space: pre-wrap;
+          font-family: var(--font-family-code);
+        }
+        .note-markdown > :first-child { margin-top: 0; }
+        .note-markdown > :last-child { margin-bottom: 0; }
+        .note-markdown pre { overflow-x: auto; }
         .notes-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
         .notes-actions-spacer { flex: 1 1 0; min-width: 0; }
         .notes-revisions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
