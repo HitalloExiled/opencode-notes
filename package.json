@@ -19,7 +19,7 @@
     "gui:watch": "vite --watch"
   },
   "dependencies": {
-    "opencode-shared": "github:HitalloExiled/opencode-shared#19e619288baf30eacb5a4b56517ae597e8c58e24"
+    "opencode-shared": "github:HitalloExiled/opencode-shared#a6058e0143687aa42dd7fb516a98b94f119fa399"
   },
   "devDependencies": {
     "@opencode/plugin": "2.2.0",

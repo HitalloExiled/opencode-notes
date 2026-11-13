@@ -14,16 +14,14 @@
  */
 
 import { createEffect, createMemo, createSignal } from "solid-js"
-import type { Accessor } from "solid-js"
 import { For, Show } from "solid-js"
 import { usePanel, usePlugin } from "@opencode/plugin/gui"
-import { SHARED_CSS, ScrollNav, createScrollNav, EmptyState, ErrorBanner, LoadingRow } from "opencode-shared/gui"
+import { SHARED_CSS, MultiSelect, ScrollNav, createScrollNav, EmptyState, ErrorBanner, LoadingRow } from "opencode-shared/gui"
 import { scopeChipLabel, useT } from "./i18n"
 import { NotesApi } from "./contract"
 import type { Note, NoteDetail, NoteResult, Revision } from "./contract"
 import {
   applyFilters,
-  filterByQuery,
   noteMatchesScope,
   pruneSelection,
   groupNotes,
@@ -72,174 +70,6 @@ const defaultForm: FormState = {
   author: "",
   scope: "all",
   projects: [],
-}
-
-/* ------------------------------------------------------------------ */
-/* Multi-select (combo)                                                */
-/* ------------------------------------------------------------------ */
-/*
- * A combo multi-select: a compact button that opens a checkbox-list
- * dropdown. Selections are an array of option values. Opening/closing is
- * controlled by the parent, which also owns the shared "click outside any
- * combo to close it + Escape" handler — so this component needs no refs or
- * per-combo listeners (this solid-js build does not expose `createRef`).
- */
-type MultiSelectProps = {
-  label: string
-  placeholder: string
-  options: string[]
-  // Optional display mapping (e.g. category value -> pt-BR label). Selections
-  // always store the raw option values; `display` only affects what is shown.
-  display?: (opt: string) => string
-  // Optional native tooltip (HTML `title`) per item, to reveal data that the
-  // display label shortens (the full project path behind its basename). Return
-  // `undefined` to suppress the hint for that item.
-  optionTitle?: (opt: string) => string | undefined
-  // Live selection as a reactive accessor (not a snapshot array): this makes
-  // checked={value().includes(opt)} a tracked getter that re-syncs the DOM
-  // whenever the selection changes, instead of going stale.
-  value: Accessor<string[]>
-  onValueChange: (v: string[]) => void
-  // Reactive "is this combo open" source: the shared `openFilter` accessor
-  // plus which combo this is. We memo it inside and CALL it at the <Show>
-  // (`when={open()}`). Passing the memo uncalled would hand <Show> the
-  // function (always truthy) instead of its boolean, so the panel would be
-  // stuck open.
-  openFilter: Accessor<string | null>
-  which: "scope" | "tag" | "category" | "project"
-  onOpenChange: () => void
-}
-
-function MultiSelect(props: MultiSelectProps) {
-  const { label, placeholder, options, value, onValueChange, openFilter, which, onOpenChange } = props
-  const ctx = usePlugin()
-  const t = useT()
-  const show = (opt: string) => props.display?.(opt) ?? opt
-  // Reactive open state (memo => a signal <Show> can track), driven by the
-  // shared `openFilter` so only one combo is open at a time.
-  const open = createMemo(() => openFilter() === which)
-
-  // Derive the next selection from the checkbox's actual post-click state
-  // (e.target.checked), not from a render-time snapshot. This ties the note
-  // filter directly to what the user sees in the dropdown: if they uncheck,
-  // the DOM `checked` is false -> we drop the option -> the filter narrows /
-  // clears, even in the worst case.
-  const toggle = (opt: string, checked: boolean) => {
-    const current = value()
-    if (checked) onValueChange(current.includes(opt) ? current : [...current, opt])
-    else onValueChange(current.filter((v) => v !== opt))
-  }
-  const clear = () => onValueChange([])
-
-  // Free-text search that narrows the options shown in the dropdown. Reset on
-  // close so stale text never carries into the next open; the *selection*
-  // (value) is intentionally untouched by the search, so checked options survive
-  // both the filter and clearing it.
-  const [search, setSearch] = createSignal("")
-  createEffect(() => {
-    if (!open()) setSearch("")
-  })
-  // Search matches both the raw value and the display text, so a translated
-  // label ("Problema") and its stored value ("problem") are both findable.
-  const visibleOptions = createMemo(() => {
-    const q = search().trim()
-    if (!q) return options
-    return options.filter(
-      (opt) =>
-        filterByQuery([opt], q).length > 0 ||
-        filterByQuery([show(opt)], q).length > 0,
-    )
-  })
-
-  return (
-    <div class="notes-filter-cell">
-      <div class="notes-filter-btn-row">
-        <button
-          class="notes-filter-btn"
-          type="button"
-          aria-expanded={open()}
-          aria-label={label}
-          onClick={onOpenChange}
-        >
-          <div class="notes-filter-btn-content">
-            <Show when={value().length === 0}>
-              <span class="notes-filter-btn-label is-placeholder">{placeholder}</span>
-            </Show>
-            <Show when={value().length > 0}>
-              <span class="notes-tags">
-                {value().slice(0, 2).map((opt) => (
-                  <span class="notes-tag">{show(opt)}</span>
-                ))}
-                {value().length > 2 && (
-                  <span class="notes-tag notes-tag-more">+{value().length - 2}</span>
-                )}
-              </span>
-            </Show>
-          </div>
-          <Show when={value().length === 0}>
-            <span class="notes-filter-btn-caret" aria-hidden="true" />
-          </Show>
-          <Show when={value().length > 0}>
-            <span
-              class="notes-filter-btn-x"
-              role="button"
-              aria-label={t("filter.clearLabel", label)}
-              tabIndex={0}
-              onClick={(e) => { e.stopPropagation(); clear(); }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  clear();
-                }
-              }}
-            >
-              <span class="notes-filter-clear-x" aria-hidden="true">×</span>
-            </span>
-          </Show>
-        </button>
-      </div>
-
-      <div
-        class={open() ? "notes-filter-panel" : "notes-filter-panel is-hidden"}
-        aria-hidden={!open()}
-      >
-        <div class="notes-filter-panel-head">
-          <span class="notes-filter-panel-title">{label}</span>
-          <Show when={value().length > 0}>
-            <ctx.ui.Button size="small" variant="ghost" onClick={clear}>
-              {t("filter.clear")}
-            </ctx.ui.Button>
-          </Show>
-        </div>
-        <div class="notes-filter-panel-search">
-          <input
-            type="text"
-            class="notes-filter-panel-search-input"
-            placeholder="Filtrar…"
-            aria-label={`Filtrar ${label.toLowerCase()}`}
-            value={search()}
-            onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-          />
-        </div>
-        <div class="notes-filter-panel-list">
-          <Show when={search().trim() !== "" && visibleOptions().length === 0}>
-            <div class="notes-filter-empty">{t("filter.none")}</div>
-          </Show>
-          {visibleOptions().map((opt) => (
-            <label class="notes-filter-option" title={props.optionTitle?.(opt)}>
-              <input
-                type="checkbox"
-                checked={value().includes(opt)}
-                onChange={(e) => toggle(opt, e.target.checked)}
-              />
-              <span>{show(opt)}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
 }
 
 const CHUNK_SIZE = 20
@@ -365,15 +195,15 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   const toggleFilter = (which: "scope" | "tag" | "category" | "project") =>
     setOpenFilter((v) => (v === which ? null : which))
 
-  // Close any open combo when the pointer lands outside a `.filter-cell`, or on
-  // Escape. `closest` needs no refs: every combo's button + panel live inside its
-  // own `.filter-cell`, so a click inside one never closes it, and a click
-  // anywhere else closes whatever is open.
+  // Close any open combo when the pointer lands outside a `.notes-filter-cell`,
+  // or on Escape. `closest` needs no refs: every combo's button + panel live
+  // inside its own cell, so a click inside one never closes it — a mousedown
+  // inside used to close the panel before the checkbox's change event fired.
   createEffect(() => {
     if (!openFilter()) return
     const onDown = (e: MouseEvent) => {
       const t = e.target as Element
-      if (t.closest(".filter-cell")) return
+      if (t.closest(".notes-filter-cell")) return
       setOpenFilter(null)
     }
     const onKey = (e: KeyboardEvent) => {
@@ -1132,143 +962,6 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
            Cells have a minimum width so the third control (Categoria) wraps
            to its own line instead of being crushed on narrow panels. */
         .notes-filter-cell { position: relative; flex: 1; min-width: 118px; }
-        .notes-filter-btn-row { display: flex; gap: 4px; align-items: stretch; }
-        .notes-filter-btn {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 6px;
-          flex: 1;
-          width: auto;
-          min-width: 0;
-          min-height: 34px;
-          padding: 5px 10px;
-          border: 1px solid var(--v2-border-border-muted);
-          border-radius: 4px;
-          background: var(--v2-background-bg-layer-02);
-          color: var(--v2-text-text-base);
-          font: inherit;
-          cursor: pointer;
-          user-select: none;
-          text-align: left;
-        }
-        .notes-filter-btn:hover { border-color: var(--v2-border-border-strong); }
-        .notes-filter-btn:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
-        .notes-filter-btn-label {
-          flex: 1;
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .notes-filter-btn-label.is-placeholder { color: var(--v2-text-text-faint); font-style: italic; }
-        /* Groups the placeholder/chips on the left; the caret sits at the end. */
-        .notes-filter-btn-content { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 6px; }
-        /* Combo button: the note-row .notes-tag/.notes-tags pill uses bg-layer-02 — the
-           SAME token as this button's background — so it reads as invisible.
-           Re-skin it here as a higher-contrast filled pill that works in
-           light + dark, and never truncate the text (the button has room). */
-        .notes-filter-btn-content .notes-tags { max-width: none; overflow: visible; gap: 6px; }
-        .notes-filter-btn-content .notes-tag {
-          background: var(--v2-overlay-simple-overlay-pressed);
-          border: 1px solid var(--v2-border-border-muted);
-          color: var(--v2-text-text-base);
-          font-weight: 500;
-          max-width: none;
-          overflow: visible;
-          text-overflow: clip;
-        }
-        .notes-filter-btn-content .notes-tag-more {
-          background: transparent;
-          border: 0;
-          color: var(--v2-text-text-muted);
-        }
-        .notes-filter-btn-caret {
-          flex: 0 0 auto;
-          width: 8px;
-          height: 8px;
-          border-left: 1.5px solid currentColor;
-          border-bottom: 1.5px solid currentColor;
-          transform: rotate(45deg);
-          transition: transform 0.12s ease;
-        }
-        /* "Clear" control sits inside the combo, exactly where the chevron
-        .notes-filter-btn-x:hover {
-          background: var(--v2-overlay-simple-overlay-hover);
-          color: var(--v2-text-text-base);
-        }
-        .notes-filter-btn-x:focus-visible {
-          outline: 2px solid var(--v2-border-border-focus);
-          outline-offset: 0;
-        }
-        .notes-filter-clear-x { font-size: 15px; line-height: 1; }
-        .notes-filter-panel {
-          position: absolute;
-          top: calc(100% + 4px);
-          left: 0;
-          right: 0;
-          z-index: 1000;
-          max-height: 280px;
-          overflow-y: auto;
-          background: var(--v2-background-bg-base);
-          border: 1px solid var(--v2-border-border-muted);
-          border-radius: 6px;
-          box-shadow: 0 12px 28px rgb(0 0 0 / 0.35);
-        }
-        /* Always mounted (checkboxes keep state); closed = hidden, not unmounted,
-           so selected options never disappear on close/reopen. */
-        .notes-filter-panel.is-hidden { display: none; }
-        .notes-filter-panel-head {
-          position: sticky;
-          top: 0;
-          z-index: 1;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 8px;
-          padding: 6px 8px;
-          font-size: 11px;
-          font-weight: 550;
-          color: var(--v2-text-text-muted);
-          border-bottom: 1px solid var(--v2-border-border-muted);
-          background: var(--v2-background-bg-base);
-        }
-        .notes-filter-panel-list { display: flex; flex-direction: column; gap: 2px; padding: 4px; }
-        /* Free-text option filter, shown between the head and the list. */
-        .notes-filter-panel-search { padding: 4px 8px; }
-        .notes-filter-panel-search-input {
-          width: 100%;
-          box-sizing: border-box;
-          padding: 3px 6px;
-          border: 1px solid var(--v2-border-border-muted);
-          border-radius: 4px;
-          background: var(--v2-background-bg-layer-02);
-          color: var(--v2-text-text-base);
-          font: inherit;
-          font-size: 12.5px;
-        }
-        .notes-filter-panel-search-input:focus {
-          outline: 2px solid var(--v2-border-border-focus);
-          outline-offset: 0;
-        }
-        .notes-filter-empty { padding: 12px 8px; font-size: 12.5px; color: var(--v2-text-text-faint); }
-        .notes-filter-option {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 4px 4px;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 12.5px;
-          color: var(--v2-text-text-base);
-        }
-        .notes-filter-option:hover { background: var(--v2-overlay-simple-overlay-pressed); }
-        .notes-filter-option input[type="checkbox"] {
-          margin: 0;
-          flex: 0 0 auto;
-          accent-color: var(--v2-state-fg-success);
-        }
-        .notes-filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .notes-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
         .notes { overflow-y: auto; flex: 1; min-height: 0; }
         /* Notes open in labelled sections (pinned first, then the rest); the
@@ -1588,6 +1281,8 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
               which="scope"
               onOpenChange={() => toggleFilter("scope")}
               optionTitle={(opt) => (opt.startsWith("/") ? opt : undefined)}
+              t={t}
+              class="notes-filter-cell"
             />
           </Show>
           <Show when={noteProjectPaths().length > 0}>
@@ -1602,6 +1297,8 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
               openFilter={openFilter}
               which="project"
               onOpenChange={() => toggleFilter("project")}
+              t={t}
+              class="notes-filter-cell"
             />
           </Show>
           <MultiSelect
@@ -1614,6 +1311,8 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
             openFilter={openFilter}
             which="category"
             onOpenChange={() => toggleFilter("category")}
+            t={t}
+            class="notes-filter-cell"
           />
           <Show when={tagOptions().length > 0}>
             <MultiSelect
@@ -1625,6 +1324,8 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
               openFilter={openFilter}
               which="tag"
               onOpenChange={() => toggleFilter("tag")}
+              t={t}
+              class="notes-filter-cell"
             />
           </Show>
         </div>
@@ -1723,6 +1424,8 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
                 setFormProjectOpen((v) => (v === "project" ? null : "project"))
               }
               optionTitle={(opt) => opt}
+              t={t}
+              class="notes-filter-cell"
             />
           </Show>
           <label>

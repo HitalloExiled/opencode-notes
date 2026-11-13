@@ -60,6 +60,10 @@ These are standing constraints, not suggestions:
   reads are unreliable. (e.g. project list = `ctx.client.project.list()`.)
 - **Do not write data inside the repo.** All DB writes go to `notes.db` (see
   "Live paths").
+- **The filter combos are the shared `MultiSelect`.** It lives in
+  `opencode-shared/gui` (used by notes and plans); do not reintroduce a local
+  copy. The "click outside closes the combo" handler must test the real cell
+  class (`.notes-filter-cell`), never a stale selector.
 - **One notes UI, two surfaces.** `NotesBody` (`src/gui/view.tsx`) owns load,
   filters, cards, actions, pagination and the grouped listing; `src/gui/setup.tsx`
   renders it in the panel and `src/gui/launcher.tsx` inside the global overlay.
