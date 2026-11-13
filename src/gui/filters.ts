@@ -39,8 +39,6 @@ export type Filters = {
   projectOnly: boolean
   /** The current project path to match against when `projectOnly` is true. */
   projectPath: string
-  /** Restrict to notes touching any of these project paths. `[]` means all. */
-  projects?: readonly string[]
 }
 
 /**
@@ -52,7 +50,7 @@ export type Filters = {
  */
 export function applyFilters(
   res: Note[],
-  { scope, tag, category, showRetracted, projectOnly, projectPath, projects = [] }: Filters
+  { scope, tag, category, showRetracted, projectOnly, projectPath }: Filters
 ): Note[] {
   let out = res
   out = out.filter(
@@ -65,10 +63,6 @@ export function applyFilters(
   // project paths equals the path.
   if (projectOnly)
     out = out.filter((n) => n.scope === "project" && n.projects.includes(projectPath))
-  // Project multiselect: a note matches when any of its paths is selected, so
-  // a multi-project note shows up under each selected project.
-  if (projects.length)
-    out = out.filter((n) => n.projects.some((p) => projects.includes(p)))
   if (scope.length) out = out.filter((n) => scope.some((s) => noteMatchesScope(n, s)))
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
   if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))

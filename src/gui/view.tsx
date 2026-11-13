@@ -128,7 +128,6 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   const [query, setQuery] = createSignal("")
   const [showRetracted, setShowRetracted] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
-  const [projectFilter, setProjectFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
   const [categoryFilter, setCategoryFilter] = createSignal<string[]>([])
   // Only one combo can be open at a time; the single signal drives the
@@ -221,7 +220,6 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
     const q = query().trim()
     const scope = scopeFilter()
     const tag = tagFilter()
-    const projects = projectFilter()
     setLoading(true)
     setError("")
     try {
@@ -235,10 +233,8 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
         a.length === b.length && a.every((v, i) => v === b[i])
       const nextScope = scope.filter((s) => all.some((n) => noteMatchesScope(n, s)))
       const nextTag = tag.filter((t) => all.some((n) => tagsOf(n).includes(t)))
-      const nextProject = projects.filter((p) => all.some((n) => n.projects.includes(p)))
       if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
       if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
-      if (!arraysSame(projects, nextProject)) setProjectFilter(nextProject)
       // Store the unfiltered result; scope/tag/retracted/pinned are applied
       // reactively in `filteredNotes`, so changing a filter never needs a
       // re-fetch.
@@ -555,7 +551,6 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
       showRetracted: showRetracted(),
       projectOnly: !modal(),
       projectPath: currentProjectPath(),
-      projects: modal() ? projectFilter() : [],
     })
   )
   // Ordered listing: the global overlay sorts by project (pinned first inside
@@ -1272,22 +1267,6 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
               onOpenChange={() => toggleFilter("scope")}
               optionTitle={(opt) => (opt.startsWith("/") ? opt : undefined)}
               dividerBefore={(opt) => opt.startsWith("/")}
-              t={t}
-              class="notes-filter-cell"
-            />
-          </Show>
-          <Show when={modal() && noteProjectPaths().length > 0}>
-            <MultiSelect
-              label={t("filter.projects.label")}
-              placeholder={t("filter.projects.placeholder")}
-              options={noteProjectPaths()}
-              display={projectSectionLabel}
-              optionTitle={(opt) => opt}
-              value={projectFilter}
-              onValueChange={setProjectFilter}
-              openFilter={openFilter}
-              which="project"
-              onOpenChange={() => toggleFilter("project")}
               t={t}
               class="notes-filter-cell"
             />

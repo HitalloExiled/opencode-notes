@@ -200,7 +200,6 @@ function idsOf(
     category?: string[];
     projectOnly?: boolean;
     projectPath?: string;
-    projects?: string[];
   },
   notes: Note[] = base,
 ) {
@@ -211,7 +210,6 @@ function idsOf(
     showRetracted: false,
     projectOnly: p.projectOnly ?? false,
     projectPath: p.projectPath ?? "",
-    projects: p.projects ?? [],
   }).map((n) => n.id);
 }
 
@@ -368,28 +366,6 @@ describe("applyFilters (retracted)", () => {
     expect(hidden.map((n) => n.id)).toEqual([]); // "b" only hits the retracted note
     const shown = applyFilters(withRetracted, { scope: [], tag: ["b"], category: [], showRetracted: true, projectOnly: false, projectPath: "" });
     expect(shown.map((n) => n.id)).toEqual([2]); // same tag while Retiradas is on
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/* applyFilters — project multiselect                                   */
-/* ------------------------------------------------------------------ */
-
-describe("applyFilters (projects multiselect)", () => {
-  test("matches a note when any of its project paths is selected", () => {
-    expect(idsOf({ projects: [TOOLS] }, multiBase)).toEqual([2, 8]);
-    expect(idsOf({ projects: [INFRA] }, multiBase)).toEqual([1, 3, 8]);
-    expect(idsOf({ projects: [INFRA, TOOLS] }, multiBase)).toEqual([1, 2, 3, 8]);
-  });
-
-  test("an empty selection means every note", () => {
-    expect(idsOf({ projects: [] }, multiBase)).toHaveLength(multiBase.length);
-  });
-
-  test("combines with the scope filter", () => {
-    expect(idsOf({ projects: [TOOLS], scope: [TOOLS] }, multiBase)).toEqual([2, 8]);
-    // the multi-project note matches both sides (INFRA via scope, TOOLS via project)
-    expect(idsOf({ projects: [TOOLS], scope: [INFRA] }, multiBase)).toEqual([8]);
   });
 });
 
