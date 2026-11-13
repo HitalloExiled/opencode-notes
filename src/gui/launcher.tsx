@@ -58,6 +58,13 @@ const CSS = `
   color: var(--v2-text-text-base);
 }
 .notes-modal-body { flex: 1; min-height: 0; }
+.oc-header-pill {
+  order: -20;
+  color: var(--v2-text-text-muted);
+  font-weight: 400;
+  font-size: 11.5px;
+}
+.oc-header-pill:hover { color: var(--v2-text-text-base); }
 .notes-modal-scrim.is-closed { display: none; }
 `
 
@@ -104,7 +111,7 @@ export function NotesPill(props: { active: boolean }) {
   const t = useT()
   return (
     <Show when={props.active}>
-      <ctx.ui.Button size="small" variant="ghost" icon="file-document" onClick={openNotesOverlay}>
+      <ctx.ui.Button class="oc-header-pill" size="small" variant="ghost" icon="file-document" onClick={openNotesOverlay}>
         {t("launcher.label", noteCount())}
       </ctx.ui.Button>
       {/* The overlay is fixed and rides the pill's slot item: no second mount. */}
