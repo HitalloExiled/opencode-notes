@@ -49,10 +49,11 @@ These are standing constraints, not suggestions:
 
 - **UI copy is PT-BR; code is English.** Localized strings go through `t()` in
   `src/gui/i18n.ts`.
-- **Every user-facing message — UI copy, toasts and synthetic/session
-  messages — must exist in PT-BR and EN-US, with EN-US as the fallback.** Code
-  and identifiers stay English. Never hardcode a UI or synthetic string in a
-  single language.
+- **Every message the plugin displays — UI copy, toasts and synthetic/session
+  messages — must exist in PT-BR and EN-US, with EN-US as the fallback.** This
+  covers product strings only; agent chat replies follow the user's language and
+  are not duplicated per locale. Code and identifiers stay English. Never
+  hardcode a displayed string in a single language.
 - **Never read OpenCode's `opencode.db` directly.** The GUI must source app
   data (projects, sessions) from the official `ctx.client.*` APIs only — raw DB
   reads are unreliable. (e.g. project list = `ctx.client.project.list()`.)
