@@ -62,10 +62,10 @@ registrar notas.
    fixar) sem sair do app. A lista é agrupada: **Fixadas** primeiro, depois uma
    seção por projeto (A–Z) e, por último, **Outras notas** (escopo global ou
    máquina).
-5. **Pill global "Notas · N"** — um pill na titlebar mostra o total de notas e
-   abre todas elas em um overlay (900px de largura, altura = viewport − 40px).
-   A titlebar coloca pills de plugins diferentes lado a lado (a faixa
-   `window.bottom` os empilharia). O overlay reusa o mesmo corpo do painel:
+5. **Pill "Notas · N"** — um pill na linha de título da timeline
+   (`session.header`) mostra o total de notas e abre todas elas em um overlay
+   (900px de largura, altura = viewport − 40px). Esse slot coloca pills de
+   plugins diferentes lado a lado (a faixa `window.bottom` os empilharia). O overlay reusa o mesmo corpo do painel:
    mesmos filtros, cartões e agrupamento, sem segunda implementação.
 6. **Injeta o próprio contexto da camada** — no início da sessão (e de novo se
    o diretório mudar) o plugin publica um bloco `<notes-context>` com as notas

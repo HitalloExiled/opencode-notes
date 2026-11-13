@@ -95,6 +95,22 @@ export function startNotesCount(ctx: Context): () => void {
   }
 }
 
+/**
+ * The session header entry: a small pill with the total count, next to the
+ * other plugins' pills in the timeline title row.
+ */
+export function NotesPill(props: { active: boolean }) {
+  const ctx = usePlugin()
+  const t = useT()
+  return (
+    <Show when={props.active}>
+      <ctx.ui.Button size="small" variant="ghost" icon="file-document" onClick={openNotesOverlay}>
+        {t("launcher.label", noteCount())}
+      </ctx.ui.Button>
+    </Show>
+  )
+}
+
 /** The overlay shell: scrim, header, and the shared notes body. */
 function NotesModal(props: { onClose: () => void }) {
   const ctx = usePlugin()

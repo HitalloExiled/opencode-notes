@@ -66,10 +66,11 @@ These are standing constraints, not suggestions:
   Never duplicate filter/list/card logic in the launcher: it owns only the bar,
   the overlay shell and the count. Panel-only affordances are the "current
   project" toggle and attaching a note to the composer.
-- **The global entry is a titlebar pill, not a bottom bar.** `TitlebarItem`
-  pills from different plugins sit side by side; the host stacks `window.bottom`
-  items. The pill shows the total note count (`NotesApi.count`), refreshed on
-  mount, on window focus and every 60s (the plugin publishes no GUI events).
+- **The entry is a `session.header` pill, not a bottom bar.** The timeline's
+  title row lays slot items from different plugins side by side; the host
+  stacks `window.bottom` items. The pill shows the total note count
+  (`NotesApi.count`), refreshed on mount, on window focus and every 60s (the
+  plugin publishes no GUI events), and renders nothing for a cached timeline.
 - **The overlay needs a slot item.** A plugin has no other place in the tree,
   so `setup` still registers a `window.bottom` item that renders the overlay and
   nothing while closed.
