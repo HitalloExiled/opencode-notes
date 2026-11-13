@@ -15,10 +15,11 @@ import {
   applyFilters,
   displayOf,
   filterByQuery,
-  groupNotes,
+  orderNotes,
   noteMatchesScope,
   projectLabel,
   pruneSelection,
+  sectionKeyOf,
   scopeLabel,
   scopeKeysOf,
   scopeOf,
@@ -392,62 +393,47 @@ describe("applyFilters (projects multiselect)", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* groupNotes / projectLabel                                            */
+/* orderNotes / sectionKeyOf                                            */
 /* ------------------------------------------------------------------ */
 
-const grouping: Note[] = [
-  note({ id: 1, scope: "project", projects: [INFRA], pinned: true }),
-  note({ id: 2, scope: "project", projects: [INFRA] }),
-  note({ id: 3, scope: "project", projects: [TOOLS] }),
-  note({ id: 4, scope: "all" }),
-  note({ id: 5, scope: "machine" }),
-  note({ id: 6, scope: "project", projects: [INFRA, TOOLS] }),
+const ordering: Note[] = [
+  note({ id: 1, scope: "project", projects: [INFRA], pinned: true, timestamp: "2026-01-01T00:00:00Z" }),
+  note({ id: 2, scope: "project", projects: [INFRA], timestamp: "2026-02-01T00:00:00Z" }),
+  note({ id: 3, scope: "project", projects: [TOOLS], timestamp: "2026-03-01T00:00:00Z" }),
+  note({ id: 4, scope: "all", timestamp: "2026-04-01T00:00:00Z" }),
+  note({ id: 5, scope: "machine", pinned: true, timestamp: "2026-05-01T00:00:00Z" }),
 ];
 
-const groupIds = (
-  notes: Note[],
-  label?: (path: string) => string,
-  options?: { byProject?: boolean },
-) =>
-  groupNotes(notes, label, options).map((g) => ({
-    key: g.key,
-    kind: g.kind,
-    ids: g.notes.map((n) => n.id),
-  }));
-
-describe("groupNotes", () => {
-  test("pinned first, then projects, then others", () => {
-    const groups = groupIds(grouping);
-    expect(groups.map((g) => g.kind)).toEqual(["pinned", "project", "project", "others"]);
-    expect(groups[0]!.ids).toEqual([1]);
-    expect(groups.at(-1)!.ids).toEqual([4, 5]);
+describe("orderNotes", () => {
+  test("global: project label order, pinned first inside the project, others last", () => {
+    const ordered = orderNotes(ordering, (path) => (path === INFRA ? "aaa" : "zzz"), {
+      byProject: true,
+    });
+    expect(ordered.map((item) => item.id)).toEqual([1, 2, 3, 5, 4]);
   });
 
-  test("a pinned note is lifted out of its project section", () => {
-    const infra = groupIds(grouping).find((g) => g.key === INFRA);
-    expect(infra?.ids).toEqual([2, 6]);
+  test("panel: pinned first, then newest first", () => {
+    const ordered = orderNotes(ordering, undefined, { byProject: false });
+    expect(ordered.map((item) => item.id)).toEqual([5, 1, 4, 3, 2]);
   });
 
-  test("a multi-project note goes to its first path only", () => {
-    for (const group of groupIds(grouping)) {
-      expect(group.ids.filter((id) => id === 6)).toHaveLength(group.key === INFRA ? 1 : 0);
-    }
+  test("does not mutate the input", () => {
+    const before = ordering.map((item) => item.id);
+    orderNotes(ordering, undefined, { byProject: true });
+    expect(ordering.map((item) => item.id)).toEqual(before);
+  });
+});
+
+describe("sectionKeyOf", () => {
+  test("global: project + pinned slice", () => {
+    expect(sectionKeyOf(ordering[0]!, { byProject: true })).toBe(`${INFRA}\u0000pinned`);
+    expect(sectionKeyOf(ordering[1]!, { byProject: true })).toBe(`${INFRA}\u0000notes`);
+    expect(sectionKeyOf(ordering[3]!, { byProject: true })).toBe(`others\u0000notes`);
   });
 
-  test("empty groups are omitted", () => {
-    const groups = groupIds([note({ id: 9, scope: "all" })]);
-    expect(groups.map((g) => g.kind)).toEqual(["others"]);
-  });
-
-  test("without byProject, project notes fall into others (panel mode)", () => {
-    const groups = groupIds(grouping, undefined, { byProject: false });
-    expect(groups.map((g) => g.kind)).toEqual(["pinned", "others"]);
-    expect(groups.at(-1)!.ids).toEqual([2, 3, 4, 5, 6]);
-  });
-
-  test("project sections sort by their display label", () => {
-    const groups = groupIds(grouping, (path) => (path === INFRA ? "zulu" : "alpha"));
-    expect(groups.filter((g) => g.kind === "project").map((g) => g.key)).toEqual([TOOLS, INFRA]);
+  test("panel: pinned or others", () => {
+    expect(sectionKeyOf(ordering[0]!, { byProject: false })).toBe("pinned");
+    expect(sectionKeyOf(ordering[1]!, { byProject: false })).toBe("notes");
   });
 });
 

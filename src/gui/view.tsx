@@ -24,13 +24,13 @@ import {
   applyFilters,
   noteMatchesScope,
   pruneSelection,
-  groupNotes,
+  orderNotes,
   projectLabel,
   scopeKeysOf,
   scopeOf,
   tagsOf,
 } from "./filters"
-import type { NoteGroup } from "./filters"
+import { sectionKeyOf } from "./filters"
 
 // `value` stays in English (it is the data written to the DB and read by the
 // notes tools). Display text lives in the i18n tables (`category.<value>`);
@@ -560,12 +560,22 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
       projects: modal() ? projectFilter() : [],
     })
   )
-  // Grouped listing: pinned first (lifted out of its project), then one section
-  // per project in label order, then global/machine notes. The grouping is pure
-  // (`groupNotes`) and runs after the filters, before pagination.
-  const groups = createMemo(() =>
-    groupNotes(filteredNotes(), projectSectionLabel, { byProject: modal() })
+  // Ordered listing: the global overlay sorts by project (pinned first inside
+  // each), the panel keeps pinned/others. The renderer opens a header whenever
+  // the section key changes between two consecutive items, so pagination stays
+  // consistent across "load more".
+  const orderedNotes = createMemo(() =>
+    orderNotes(filteredNotes(), projectSectionLabel, { byProject: modal() })
   )
+  /** Header text for the section a note opens. */
+  const sectionLabel = (note: Note): string => {
+    if (!modal()) return note.pinned ? t("group.pinned") : t("group.others")
+    const project =
+      note.scope === "project" && note.projects[0]
+        ? projectSectionLabel(note.projects[0])
+        : t("group.others")
+    return note.pinned ? `${project} · ${t("group.pinned")}` : project
+  }
   const count = createMemo(() => filteredNotes().length)
   const emptyTitle = () =>
     query().trim()
@@ -583,19 +593,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
         : !modal()
           ? t("empty.hint.project")
           : t("empty.hint.none")
-  // Pagination runs across the sections: take notes in order until the page is
-  // full, so a section can start mid-list without breaking the "load more".
-  const visibleGroups = createMemo(() => {
-    const out: NoteGroup[] = []
-    let left = visible()
-    for (const group of groups()) {
-      if (left <= 0) break
-      const notes = group.notes.slice(0, left)
-      if (notes.length > 0) out.push({ ...group, notes })
-      left -= notes.length
-    }
-    return out
-  })
+  const visibleNotes = createMemo(() => orderedNotes().slice(0, visible()))
   const nav = createScrollNav({
     hasMore: () => visible() < filteredNotes().length,
     loadingMore: () => false,
@@ -1460,17 +1458,19 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
         <Show when={filteredNotes().length === 0 && !loading()}>
           <EmptyState icon="file-document" title={emptyTitle()} hint={emptyHint()} />
         </Show>
-        <For each={visibleGroups()}>
-          {(group) => (
+        <For each={visibleNotes()}>
+          {(note, index) => (
             <>
-              <div class="note-group-head">
-                {group.kind === "pinned"
-                  ? t("group.pinned")
-                  : group.kind === "others"
-                    ? t("group.others")
-                    : projectSectionLabel(group.project ?? "")}
-              </div>
-              <For each={group.notes}>{(n) => card(n)}</For>
+              <Show
+                when={
+                  index() === 0 ||
+                  sectionKeyOf(visibleNotes()[index() - 1]!, { byProject: modal() }) !==
+                    sectionKeyOf(note, { byProject: modal() })
+                }
+              >
+                <div class="note-group-head">{sectionLabel(note)}</div>
+              </Show>
+              {card(note)}
             </>
           )}
         </For>

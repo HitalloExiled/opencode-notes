@@ -75,58 +75,45 @@ export function applyFilters(
   return out
 }
 
-/** A section of the notes list. */
-export type NoteGroup = {
-  /** Stable key: "pinned", a project path, or "others". */
-  key: string
-  kind: "pinned" | "project" | "others"
-  /** The project path, for `kind: "project"`. */
-  project?: string
-  notes: Note[]
-}
-
 /**
- * Group filtered notes for display: pinned first (lifted out of their project),
- * then one section per project in label order, then the global/machine notes.
- * A multi-project note belongs to its first path only, so no note repeats.
- *
- * `label` resolves a project path to the name shown in the header; it also
- * orders the project sections (locale compare).
+ * Display order. With `byProject` (the global overlay) notes are sorted by
+ * project label (notes without a project go last), pinned first inside each
+ * project, newest first. Without it (the panel) it is pinned first, newest
+ * first.
  */
-export function groupNotes(
+export function orderNotes(
   notes: Note[],
   label: (path: string) => string = (path) => path,
   options: { byProject?: boolean } = {}
-): NoteGroup[] {
-  const pinned: Note[] = []
-  const byProject = new Map<string, Note[]>()
-  const others: Note[] = []
-  for (const note of notes) {
-    if (note.pinned) {
-      pinned.push(note)
-      continue
+): Note[] {
+  const projectOf = (note: Note): string =>
+    options.byProject && note.scope === "project" ? (note.projects[0] ?? "") : ""
+  return [...notes].sort((a, b) => {
+    if (options.byProject) {
+      const pa = projectOf(a)
+      const pb = projectOf(b)
+      if (pa !== pb) {
+        if (!pa) return 1
+        if (!pb) return -1
+        const byLabel = label(pa).localeCompare(label(pb))
+        if (byLabel !== 0) return byLabel
+      }
     }
-    // The panel lists the current project only, so sections there are just
-    // pinned/others; the global overlay groups by project.
-    const project =
-      options.byProject !== false && note.scope === "project" ? note.projects[0] : undefined
-    if (!project) {
-      others.push(note)
-      continue
-    }
-    const list = byProject.get(project)
-    if (list) list.push(note)
-    else byProject.set(project, [note])
-  }
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    return b.timestamp.localeCompare(a.timestamp)
+  })
+}
 
-  const groups: NoteGroup[] = []
-  if (pinned.length) groups.push({ key: "pinned", kind: "pinned", notes: pinned })
-  const projects = [...byProject.keys()].sort((a, b) => label(a).localeCompare(label(b)))
-  for (const project of projects) {
-    groups.push({ key: project, kind: "project", project, notes: byProject.get(project) ?? [] })
-  }
-  if (others.length) groups.push({ key: "others", kind: "others", notes: others })
-  return groups
+/**
+ * The section an item opens: the project (or "others") plus whether it is the
+ * pinned slice. The renderer shows a header whenever this key changes between
+ * two consecutive items of the page.
+ */
+export function sectionKeyOf(note: Note, options: { byProject?: boolean } = {}): string {
+  const pinned = note.pinned ? "pinned" : "notes"
+  if (!options.byProject) return pinned
+  const project = note.scope === "project" ? (note.projects[0] ?? "others") : "others"
+  return `${project}\u0000${pinned}`
 }
 
 /**

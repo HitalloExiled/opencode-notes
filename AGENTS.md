@@ -84,10 +84,12 @@ These are standing constraints, not suggestions:
   `scope === "project"` whose `projects` include the session's project path;
   global/machine notes live in the global overlay. The panel therefore has no
   project or scope filter (search, category, tag and retracted remain).
-- **The notes list is grouped, not partitioned.** `groupNotes` (pure, in
-  `src/gui/filters.ts`) yields pinned first, then one section per project in
-  label order, then global/machine notes — only with `byProject` (the overlay);
-  the panel asks for pinned/others. A multi-project note belongs to its
+- **The notes list is ordered, and sections come from the page.** `orderNotes`
+  (pure, in `src/gui/filters.ts`) sorts the global overlay by project
+  (pinned first inside each, others last) and the panel by pinned/recency;
+  `sectionKeyOf` gives the header key. The renderer paginates the ordered list
+  and opens a header when the key changes between two consecutive items, so
+  pagination and sections never disagree. A multi-project note belongs to its
   first path only, so it never repeats.
 - **Tool descriptions fit the Code Mode catalog budget.** The catalog truncates
   a description around 119 characters, so keep it ≤110 with the load-bearing
