@@ -1474,6 +1474,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
             </>
           )}
         </For>
+          <div ref={nav.sentinelRef} class="os-scroll-sentinel" />
         </div>
         <ScrollNav nav={nav} topLabel={t("scroll.top")} bottomLabel={t("scroll.bottom")} />
       </div>
