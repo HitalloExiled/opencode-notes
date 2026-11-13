@@ -13,6 +13,7 @@
  */
 
 import { createSignal, onCleanup, onMount, Show } from "solid-js"
+import { Portal } from "solid-js/web"
 import { usePlugin } from "@opencode/plugin/gui"
 import type { Context } from "@opencode/plugin/gui"
 import { NotesApi } from "./contract"
@@ -109,8 +110,10 @@ export function NotesPill(props: { active: boolean }) {
       </ctx.ui.Button>
       {/* The overlay is fixed and rides the pill's slot item: no second mount. */}
       <Show when={opened()}>
-        <style>{CSS}</style>
-        <NotesModal onClose={close} />
+        <Portal>
+          <style>{CSS}</style>
+          <NotesModal onClose={close} />
+        </Portal>
       </Show>
     </Show>
   )

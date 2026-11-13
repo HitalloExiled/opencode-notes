@@ -71,9 +71,11 @@ These are standing constraints, not suggestions:
   stacks `window.bottom` items. The pill shows the total note count
   (`NotesApi.count`), refreshed on mount, on window focus and every 60s (the
   plugin publishes no GUI events), and renders nothing for a cached timeline.
-- **The overlay rides the pill's slot item.** It is `position: fixed`, so it
-  covers the window without needing a second mount; do not add a
-  `window.bottom` item for it.
+- **The overlay rides the pill's slot item and is portaled.** It is
+  `position: fixed`, so it covers the window, but it must render through a
+  `Portal` to `document.body`: the session header is inside the app's stacking
+  context and the composer draws above it (z-index and the composer fade would
+  cut the modal). Do not add a `window.bottom` item for it.
 - **The notes list is grouped, not partitioned.** `groupNotes` (pure, in
   `src/gui/filters.ts`) yields pinned first, then one section per project in
   label order, then global/machine notes. A multi-project note belongs to its
