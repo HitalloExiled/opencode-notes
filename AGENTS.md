@@ -58,6 +58,10 @@ These are standing constraints, not suggestions:
   reads are unreliable. (e.g. project list = `ctx.client.project.list()`.)
 - **Do not write data inside the repo.** All DB writes go to `notes.db` (see
   "Live paths").
+- **Tool descriptions fit the Code Mode catalog budget.** The catalog truncates
+  a description around 119 characters, so keep it ≤110 with the load-bearing
+  sentence first; parameter descriptions stay ≤6 words.
+  `test/descriptions.test.ts` enforces both.
 - **Multi-project model:** plain-FK join tables (`note_projects`,
   `note_revision_projects`), **no `ON DELETE CASCADE`**. On delete, drop the
   join children **before** the parent (in this build `foreign_keys` defaults ON).

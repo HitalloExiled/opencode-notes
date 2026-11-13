@@ -16,6 +16,7 @@
 
 import { Plugin } from "@opencode/plugin";
 import {
+  NOTES_NAMESPACE,
   add,
   confirm,
   dispute,
@@ -55,11 +56,7 @@ export default Plugin.define({
       // editor.namespace() only labels the catalog group; the per-tool
       // options.namespace below is what actually prefixes the qualified
       // name (tools.notes.*) in Code Mode.
-      editor.namespace({
-        name: "notes",
-        description:
-          "Curated long-term memory: decisions, solved problems, configuration and snippets, with a trust lifecycle (confirm/dispute/retract), full version history, and pinning into session context (pinned notes are injected in the <notes-context> block, and the agent is notified when the injected set changes). Nothing is ever deleted: retract hides, restore revives.",
-      });
+      editor.namespace(NOTES_NAMESPACE);
       // `pinned` keeps the entry points (add/search) and the pin controls in the
       // Code Mode catalog even when its per-namespace budget is exhausted (the
       // summary lists the cheapest signatures first, so pin/unpin would

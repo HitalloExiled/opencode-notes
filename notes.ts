@@ -63,6 +63,13 @@ const CATEGORIES = [
   "general",
 ] as const;
 
+/** Catalog group label. Code Mode truncates this at ~119 characters. */
+export const NOTES_NAMESPACE = {
+  name: "notes",
+  description:
+    "Curated long-term memory: decisions, solved problems, config, snippets. Nothing is deleted.",
+} as const;
+
 type ToolResult = { content: string; metadata?: Record<string, unknown> };
 
 /**
@@ -94,7 +101,7 @@ function requireProjects(args: {
   return null;
 }
 
-const ID_DESC = "Note id, shown as #NN by notes.search.";
+const ID_DESC = "Note id (as shown by notes.search).";
 
 /** Normalize for comparison: strip accents, lowercase. */
 function norm(text: string): string {
@@ -123,54 +130,37 @@ function fail(error: string): ToolResult {
 const addInput = z.object({
   category: z
     .enum(CATEGORIES)
-    .describe("Note category. Use 'problem' for a solved problem."),
+    .describe("Note category (problem for solved problems)."),
   title: z
     .string()
-    .describe("Short, specific title. For 'problem', describe the symptom."),
+    .describe("Short title; for problem, the symptom."),
   content: z
     .string()
-    .describe(
-      "Content written for someone who did not see the conversation. If category=problem: " +
-        "Symptom: ... | Cause: <root> | Solution: <reproducible> | Files: ...",
-    ),
+    .describe("Body; problem needs Symptom, Cause, Solution."),
   tags: z
     .string()
     .optional()
-    .describe("Space-separated keywords, without '#' (e.g. 'selinux module')."),
+    .describe("Space-separated keywords, no '#'."),
   scope: z
     .string()
     .optional()
-    .describe(
-      "Scope type: 'all'/'global' (machine-independent, the default), " +
-        "'machine', or 'project'.",
-    ),
+    .describe("'all'/'global' (default), 'machine' or 'project'."),
   projects: z
     .array(z.string().min(1, "each project path must be non-empty"))
     .optional()
-    .describe(
-      "One or more absolute project paths (no spaces). Required when scope is " +
-        "'project' (pass an array with at least one path). " +
-        "The legacy 'project:<name>' value in `scope` is no longer accepted.",
-    ),
+    .describe("Absolute project paths; required for scope=project."),
   author: z
     .string()
     .optional()
-    .describe(
-      "Who registered the note (attribution): your agent name when acting as an agent, " +
-        "or the human's name when a person registers it from a terminal. Shown as " +
-        "'(by <author>)' in search/list/view.",
-    ),
+    .describe("Attribution: agent or human name."),
 });
 type AddArgs = z.infer<typeof addInput>;
 
 export const add = {
   name: "add",
   description:
-    "Save a note to long-term memory (notes). Use for decisions, non-obvious " +
-    "configuration, snippets and — above all — solved problems. " +
-    "Rule: if category=problem, content MUST contain Symptom, Cause and Solution " +
-    "(the tool refuses to save if one is missing). Before saving, search with " +
-    "notes.search to avoid duplicates. Write notes in English.",
+    "Save a note. If category=problem, content needs Symptom, Cause and Solution. " +
+    "Search first for duplicates.",
   input: addInput,
   async execute(args: AddArgs): Promise<ToolResult> {
     const category = args.category;
@@ -213,47 +203,31 @@ export const add = {
 
 const updateInput = z.object({
   id: z.number().int().positive().describe(ID_DESC),
-  title: z.string().optional().describe("New title, only if the current one is wrong."),
-  content: z.string().optional().describe("New content that replaces the wrong content."),
+  title: z.string().optional().describe("New title, only if wrong."),
+  content: z.string().optional().describe("Replacement content for a wrong note."),
   tags: z
     .string()
     .optional()
-    .describe("New space-separated keywords (empty string clears them)."),
+    .describe("New keywords; empty string clears them."),
   category: z
     .enum(CATEGORIES)
     .optional()
-    .describe("New category, only if the note was filed wrongly."),
+    .describe("New category, only if filed wrongly."),
   scope: z
     .string()
     .optional()
-    .describe(
-      "New scope type: 'all'/'global', 'machine', or 'project'. " +
-        "(empty string clears it.)",
-    ),
+    .describe("New scope; empty clears it."),
   projects: z
     .array(z.string().min(1, "each project path must be non-empty"))
     .optional()
-    .describe(
-      "New absolute project paths (no spaces). Set it to change the set of " +
-        "project-scoped paths; required when scope is 'project' (pass an array " +
-        "with at least one path). To drop project scope, set scope to 'all'/'global'. " +
-        "The legacy 'project:<name>' value in `scope` is no longer accepted.",
-    ),
+    .describe("Absolute project paths; required for scope=project."),
 });
 type UpdateArgs = z.infer<typeof updateInput>;
 
 export const update = {
   name: "update",
   description:
-    "LAST RESORT: correct an existing note whose content is now known to be wrong " +
-    "or conflicts with verified information. Do NOT use it to append new facts, " +
-    "reword for style, or erase history — save a new note instead. Only the fields " +
-    "you pass change; the timestamp is set to now, so the corrected note moves to " +
-    "the top. If the resulting note is category=problem, it still needs " +
-    "Symptom, Cause and Solution. Rewriting a note from evidence also marks it " +
-    "verified and clears any dispute/retraction (the old warnings no longer apply). " +
-    "Nothing is lost: the previous version is snapshotted and readable with " +
-    "notes.history, and can be brought back with notes.restore.",
+    "Correct a wrong note (last resort), never append facts. Old version stays in notes.history.",
   input: updateInput,
   async execute(args: UpdateArgs): Promise<ToolResult> {
     if (
@@ -317,7 +291,7 @@ const searchInput = z.object({
   query: z
     .string()
     .optional()
-    .describe("Search term(s). Omit or leave empty to list the latest notes."),
+    .describe("Keywords; empty lists the latest notes."),
   limit: z
     .number()
     .int()
@@ -327,20 +301,14 @@ const searchInput = z.object({
   includeRetracted: z
     .boolean()
     .optional()
-    .describe(
-      "Also show retracted notes (🚫), normally hidden. Use to audit/revive, not for normal recall.",
-    ),
+    .describe("Include retracted notes, normally hidden."),
 });
 type SearchArgs = z.infer<typeof searchInput>;
 
 export const search = {
   name: "search",
   description:
-    "Search the curated note store by keyword. Without 'query', lists the most " +
-    "recent notes. Multi-word queries first require ALL words (AND) and only fall " +
-    "back to ANY (OR) when nothing matches, so results stay precise. Disputed notes " +
-    "are still shown but listed last, with a ⚠ badge; retracted notes are hidden " +
-    "unless includeRetracted=true.",
+    "Search notes by keyword; empty query lists latest. Disputed last, retracted hidden.",
   input: searchInput,
   async execute(args: SearchArgs): Promise<ToolResult> {
     const query = (args.query ?? "").trim();
@@ -380,10 +348,7 @@ type ConfirmArgs = z.infer<typeof confirmInput>;
 export const confirm = {
   name: "confirm",
   description:
-    "Mark a note as re-verified: it still holds as of now. This is the positive " +
-    "signal — use it after you relied on a note and independently confirmed it is " +
-    "correct. Clears any dispute/retraction on the note (brings a retracted note " +
-    "back into normal search). Prefer this over a new note when nothing changed.",
+    "Re-verify a note that still holds; clears dispute/retraction. Prefer over a new note.",
   input: confirmInput,
   async execute(args: ConfirmArgs): Promise<ToolResult> {
     const { db } = await requireStore();
@@ -397,18 +362,14 @@ const disputeInput = z.object({
   id: z.number().int().positive().describe(ID_DESC),
   why: z
     .string()
-    .describe("Concrete reason it looks wrong (what you saw that contradicts it). Mandatory."),
+    .describe("Concrete reason it looks wrong; mandatory."),
 });
 type DisputeArgs = z.infer<typeof disputeInput>;
 
 export const dispute = {
   name: "dispute",
   description:
-    "Flag a note as suspect WITHOUT rewriting it (dispute). Use when you believe " +
-    "the note is wrong or outdated but do not yet have the correction: the next " +
-    "reader sees a ⚠ warning and the note sinks to the bottom of results. 'why' is " +
-    "mandatory. Once you have the fix, use notes.update instead — that resolves the " +
-    "dispute and re-verifies the note.",
+    "Flag a note as suspect without editing it; why is mandatory. Later fix with notes.update.",
   input: disputeInput,
   async execute(args: DisputeArgs): Promise<ToolResult> {
     if (!args.why.trim()) {
@@ -429,17 +390,14 @@ const retractInput = z.object({
   why: z
     .string()
     .optional()
-    .describe("Short reason it is being retracted (stored, shown with the 🚫 badge)."),
+    .describe("Short reason; shown in the badge."),
 });
 type RetractArgs = z.infer<typeof retractInput>;
 
 export const retract = {
   name: "retract",
   description:
-    "Retract a note: hides it from normal search/list (junk, a test/probe leftover, " +
-    "superseded noise) without deleting anything. Reversible — notes.confirm or " +
-    "notes.update brings it back, and includeRetracted=true still shows it with a " +
-    "🚫 badge. This is the noise-control tool; deletion stays a human-only action.",
+    "Hide a junk or superseded note from search without deleting. Reversible via confirm/update.",
   input: retractInput,
   async execute(args: RetractArgs): Promise<ToolResult> {
     const { db } = await requireStore();
@@ -456,17 +414,14 @@ const historyInput = z.object({
     .int()
     .positive()
     .optional()
-    .describe("Max earlier versions to show, newest first (default: all)."),
+    .describe("Max revisions (default all)."),
 });
 type HistoryArgs = z.infer<typeof historyInput>;
 
 export const history = {
   name: "history",
   description:
-    "Show a note's version history: the current state plus every earlier version " +
-    "kept by notes.update / notes.restore (each snapshotted before it was rewritten). " +
-    "Use when a note looks wrong or you need the exact previous wording — the old " +
-    "content is never discarded. Each prior version is labelled rev #N.",
+    "Show a note's current text plus earlier revisions (rev #N) kept by update/restore.",
   input: historyInput,
   async execute(args: HistoryArgs): Promise<ToolResult> {
     const { db } = await requireStore();
@@ -485,18 +440,14 @@ const restoreInput = z.object({
     .number()
     .int()
     .positive()
-    .describe("Revision id (rev #N) to restore, from notes.history."),
+    .describe("Revision id (rev #N) to restore."),
 });
 type RestoreArgs = z.infer<typeof restoreInput>;
 
 export const restore = {
   name: "restore",
   description:
-    "Bring back the content of an earlier version (rev #N from notes.history). This " +
-    "is itself an update: the current version is snapshotted first, so restoring " +
-    "never loses anything — you can always restore again. Use it to undo an earlier " +
-    "notes.update that turned out wrong. Only content/title/tags/category come back; " +
-    "the note is re-verified (dispute/retraction cleared).",
+    "Restore an earlier revision (rev #N); the current version is snapshotted first.",
   input: restoreInput,
   async execute(args: RestoreArgs): Promise<ToolResult> {
     const { db } = await requireStore();
@@ -523,10 +474,7 @@ type ViewArgs = z.infer<typeof viewInput>;
 export const view = {
   name: "view",
   description:
-    "Show one note by id, in full, whatever its trust state — retracted notes " +
-    "included, with the 🚫 badge. Use it when you already have an id from " +
-    "notes.search, or to inspect a note that no longer appears in search before " +
-    "deciding to notes.confirm or notes.update it.",
+    "Show one note by id in full, including retracted ones.",
   input: viewInput,
   async execute(args: ViewArgs): Promise<ToolResult> {
     const { db } = await requireStore();
@@ -545,10 +493,7 @@ type DoctorArgs = z.infer<typeof doctorInput>;
 export const doctor = {
   name: "doctor",
   description:
-    "Memory subsystem diagnosis: runtime/sqlite, FTS5 availability (full-text " +
-    "search; when absent the tools degrade to LIKE), database schema path and " +
-    "version, note count and index sync. Use when a search/save fails or to " +
-    "check whether the machine is ready.",
+    "Diagnose the notes store: schema, FTS5, counts, index sync.",
   input: doctorInput,
   async execute(_args: DoctorArgs): Promise<ToolResult> {
     const store = await requireStore();
@@ -564,11 +509,7 @@ type PinArgs = z.infer<typeof pinInput>;
 export const pin = {
   name: "pin",
   description:
-    "Pin a note: it is injected in the <notes-context> block (up to the " +
-    "NOTES_INJECT quota) — at the start of every session and, when the pinned " +
-    "set changes mid-session, the affected agent is notified. Global, machine and " +
-    "current-project notes are eligible; a project-scoped note appears only in " +
-    "sessions of that project. Unpin when it is no longer relevant.",
+    "Pin a note into <notes-context> (injected every session, subject to quota). Unpin when stale.",
   input: pinInput,
   async execute(args: PinArgs): Promise<ToolResult> {
     const { db } = await requireStore();
@@ -581,10 +522,7 @@ export const pin = {
 export const unpin = {
   name: "unpin",
   description:
-    "Unpin a note: it will no longer be injected in <notes-context> (but remains " +
-    "searchable via notes.search). When the pinned set changes mid-session, the " +
-    "affected agent is notified. Use this when a pinned note is no longer " +
-    "relevant to the current work.",
+    "Unpin a note: stops injecting it in <notes-context>; still searchable.",
   input: pinInput,
   async execute(args: PinArgs): Promise<ToolResult> {
     const { db } = await requireStore();
