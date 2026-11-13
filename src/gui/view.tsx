@@ -24,9 +24,9 @@ import {
   applyFilters,
   noteMatchesScope,
   pruneSelection,
+  scopeOptionsOf,
   orderNotes,
   projectLabel,
-  scopeKeysOf,
   scopeOf,
   tagsOf,
 } from "./filters"
@@ -306,9 +306,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   // tag never removes the others from the dropdown. A project-scoped note
   // contributes one key per project path, so all its projects appear as
   // distinct options.
-  const scopeOptions = createMemo(() =>
-    [...new Set(allNotes().flatMap((n) => scopeKeysOf(n)))].sort((a, b) => a.localeCompare(b))
-  )
+  const scopeOptions = createMemo(() => scopeOptionsOf(allNotes()))
   const tagOptions = createMemo(() =>
     [...new Set(allNotes().flatMap(tagsOf))].sort((a, b) => a.localeCompare(b))
   )
@@ -1273,6 +1271,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
               which="scope"
               onOpenChange={() => toggleFilter("scope")}
               optionTitle={(opt) => (opt.startsWith("/") ? opt : undefined)}
+              dividerBefore={(opt) => opt.startsWith("/")}
               t={t}
               class="notes-filter-cell"
             />

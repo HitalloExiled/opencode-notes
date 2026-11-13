@@ -142,6 +142,19 @@ export function scopeKeysOf(note: Note): readonly string[] {
 }
 
 /**
+ * The options of the scope combo: the type keys first (global, machine, and
+ * `project` when a project note has no paths), then the project paths in
+ * alphabetical order. The combo draws a divider before the first path.
+ */
+export function scopeOptionsOf(notes: Note[]): string[] {
+  const projects = [
+    ...new Set(notes.filter((note) => note.scope === "project").flatMap((note) => note.projects)),
+  ].sort((a, b) => a.localeCompare(b))
+  const needsFallback = notes.some((note) => note.scope === "project" && note.projects.length === 0)
+  return ["all", "machine", ...(needsFallback ? ["project"] : []), ...projects]
+}
+
+/**
  * Does a note match a single scope *option*? True when the option is any of
  * the note's keys — this is what makes a multi-project note show up under
  * *each* of its projects in the scope filter, and under the `projectOnly`

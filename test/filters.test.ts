@@ -19,6 +19,7 @@ import {
   noteMatchesScope,
   projectLabel,
   pruneSelection,
+  scopeOptionsOf,
   sectionKeyOf,
   scopeLabel,
   scopeKeysOf,
@@ -389,6 +390,34 @@ describe("applyFilters (projects multiselect)", () => {
     expect(idsOf({ projects: [TOOLS], scope: [TOOLS] }, multiBase)).toEqual([2, 8]);
     // the multi-project note matches both sides (INFRA via scope, TOOLS via project)
     expect(idsOf({ projects: [TOOLS], scope: [INFRA] }, multiBase)).toEqual([8]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* scopeOptionsOf                                                       */
+/* ------------------------------------------------------------------ */
+
+describe("scopeOptionsOf", () => {
+  test("type keys first, then project paths in alphabetical order", () => {
+    const notes = [
+      note({ id: 1, scope: "all" }),
+      note({ id: 2, scope: "machine" }),
+      note({ id: 3, scope: "project", projects: [TOOLS, INFRA] }),
+    ];
+    expect(scopeOptionsOf(notes)).toEqual(["all", "machine", INFRA, TOOLS]);
+  });
+
+  test("lists the project fallback key only when a project note has no paths", () => {
+    expect(scopeOptionsOf([note({ id: 1, scope: "project", projects: [] })])).toEqual([
+      "all",
+      "machine",
+      "project",
+    ]);
+    expect(scopeOptionsOf([note({ id: 1, scope: "project", projects: [INFRA] })])).toEqual([
+      "all",
+      "machine",
+      INFRA,
+    ]);
   });
 });
 
