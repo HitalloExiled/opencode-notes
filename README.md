@@ -56,12 +56,12 @@ registrar notas.
 3. **Busca e inspeção** — `search` (FTS5 quando disponível, senão `LIKE`),
    `view` (nota completa, inclusive retraídas), `doctor` (diagnóstico do
    subsistema).
-4. **Painel lateral (desktop)** — lista paginada, busca, filtros (retraídas,
-   projeto atual, projetos em multiselect, escopo, categoria e tag), detalhe
-   com revisões e as ações (salvar, editar, confirmar, questionar, retirar,
-   fixar) sem sair do app. A lista é agrupada: **Fixadas** primeiro, depois uma
-   seção por projeto (A–Z) e, por último, **Outras notas** (escopo global ou
-   máquina).
+4. **Painel lateral (desktop)** — escopado ao **projeto da sessão**: mostra
+   apenas as notas com aquele projeto em `projects` (globais e de máquina ficam
+   para o overlay), com busca, retraídas, categoria e tag, detalhe com revisões
+   e as ações (salvar, editar, confirmar, questionar, retirar, fixar). A lista
+   é dividida em **Fixadas** e **Outras notas** — sem agrupamento por projeto e
+   sem filtro de projeto/escopo.
 5. **Pill "Notas · N"** — um pill na linha de título da timeline
    (`session.header`) mostra o total de notas e abre todas elas em um overlay
    (900px de largura, altura = viewport − 40px). Esse slot coloca pills de

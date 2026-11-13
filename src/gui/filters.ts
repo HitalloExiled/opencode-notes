@@ -95,7 +95,8 @@ export type NoteGroup = {
  */
 export function groupNotes(
   notes: Note[],
-  label: (path: string) => string = (path) => path
+  label: (path: string) => string = (path) => path,
+  options: { byProject?: boolean } = {}
 ): NoteGroup[] {
   const pinned: Note[] = []
   const byProject = new Map<string, Note[]>()
@@ -105,7 +106,10 @@ export function groupNotes(
       pinned.push(note)
       continue
     }
-    const project = note.scope === "project" ? note.projects[0] : undefined
+    // The panel lists the current project only, so sections there are just
+    // pinned/others; the global overlay groups by project.
+    const project =
+      options.byProject !== false && note.scope === "project" ? note.projects[0] : undefined
     if (!project) {
       others.push(note)
       continue

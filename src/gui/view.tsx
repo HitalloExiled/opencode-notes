@@ -127,7 +127,6 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   /* ---------- state ---------- */
   const [query, setQuery] = createSignal("")
   const [showRetracted, setShowRetracted] = createSignal(false)
-  const [projectOnly, setProjectOnly] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
   const [projectFilter, setProjectFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
@@ -550,26 +549,30 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   // lives in `applyFilters` (src/gui/filters.ts) and is unit-tested.
   const filteredNotes = createMemo(() =>
     applyFilters(resNotes(), {
-      scope: scopeFilter(),
+      // The panel is always the routed project; the overlay is global and
+      // carries its own scope/project filters.
+      scope: modal() ? scopeFilter() : [],
       tag: tagFilter(),
       category: categoryFilter(),
       showRetracted: showRetracted(),
-      projectOnly: projectOnly(),
+      projectOnly: !modal(),
       projectPath: currentProjectPath(),
-      projects: projectFilter(),
+      projects: modal() ? projectFilter() : [],
     })
   )
   // Grouped listing: pinned first (lifted out of its project), then one section
   // per project in label order, then global/machine notes. The grouping is pure
   // (`groupNotes`) and runs after the filters, before pagination.
-  const groups = createMemo(() => groupNotes(filteredNotes(), projectSectionLabel))
+  const groups = createMemo(() =>
+    groupNotes(filteredNotes(), projectSectionLabel, { byProject: modal() })
+  )
   const count = createMemo(() => filteredNotes().length)
   const emptyTitle = () =>
     query().trim()
       ? t("empty.search", query().trim())
       : showRetracted()
         ? t("empty.retracted")
-        : projectOnly()
+        : !modal()
           ? t("empty.project")
           : t("empty.none")
   const emptyHint = () =>
@@ -577,7 +580,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
       ? t("empty.hint.search")
       : showRetracted()
         ? t("empty.hint.retracted")
-        : projectOnly()
+        : !modal()
           ? t("empty.hint.project")
           : t("empty.hint.none")
   // Pagination runs across the sections: take notes in order until the page is
@@ -604,7 +607,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   createEffect(() => {
     query()
     showRetracted()
-    projectOnly()
+    modal()
     scopeFilter()
     categoryFilter()
     tagFilter()
@@ -1257,19 +1260,10 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
         >
           {t("filterRetracted")}
         </button>
-        <Show when={!modal()}>
-          <button
-            type="button"
-            class={`notes-toggle ${projectOnly() ? "is-active" : ""}`}
-            onClick={() => setProjectOnly(!projectOnly())}
-          >
-            {t("filterProject")}
-          </button>
-        </Show>
       </div>
 
         <div class="notes-filter-row">
-          <Show when={scopeOptions().length > 0}>
+          <Show when={modal() && scopeOptions().length > 0}>
             <MultiSelect
               label={t("filter.scope.label")}
               placeholder={t("filter.scope.placeholder")}
@@ -1285,7 +1279,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
               class="notes-filter-cell"
             />
           </Show>
-          <Show when={noteProjectPaths().length > 0}>
+          <Show when={modal() && noteProjectPaths().length > 0}>
             <MultiSelect
               label={t("filter.projects.label")}
               placeholder={t("filter.projects.placeholder")}

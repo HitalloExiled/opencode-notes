@@ -80,9 +80,14 @@ These are standing constraints, not suggestions:
   `Portal` to `document.body`: the session header is inside the app's stacking
   context and the composer draws above it (z-index and the composer fade would
   cut the modal). Do not add a `window.bottom` item for it.
+- **The panel is scoped to the routed project.** It lists only notes with
+  `scope === "project"` whose `projects` include the session's project path;
+  global/machine notes live in the global overlay. The panel therefore has no
+  project or scope filter (search, category, tag and retracted remain).
 - **The notes list is grouped, not partitioned.** `groupNotes` (pure, in
   `src/gui/filters.ts`) yields pinned first, then one section per project in
-  label order, then global/machine notes. A multi-project note belongs to its
+  label order, then global/machine notes — only with `byProject` (the overlay);
+  the panel asks for pinned/others. A multi-project note belongs to its
   first path only, so it never repeats.
 - **Tool descriptions fit the Code Mode catalog budget.** The catalog truncates
   a description around 119 characters, so keep it ≤110 with the load-bearing

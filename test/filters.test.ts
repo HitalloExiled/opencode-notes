@@ -404,8 +404,12 @@ const grouping: Note[] = [
   note({ id: 6, scope: "project", projects: [INFRA, TOOLS] }),
 ];
 
-const groupIds = (notes: Note[], label?: (path: string) => string) =>
-  groupNotes(notes, label).map((g) => ({
+const groupIds = (
+  notes: Note[],
+  label?: (path: string) => string,
+  options?: { byProject?: boolean },
+) =>
+  groupNotes(notes, label, options).map((g) => ({
     key: g.key,
     kind: g.kind,
     ids: g.notes.map((n) => n.id),
@@ -433,6 +437,12 @@ describe("groupNotes", () => {
   test("empty groups are omitted", () => {
     const groups = groupIds([note({ id: 9, scope: "all" })]);
     expect(groups.map((g) => g.kind)).toEqual(["others"]);
+  });
+
+  test("without byProject, project notes fall into others (panel mode)", () => {
+    const groups = groupIds(grouping, undefined, { byProject: false });
+    expect(groups.map((g) => g.kind)).toEqual(["pinned", "others"]);
+    expect(groups.at(-1)!.ids).toEqual([2, 3, 4, 5, 6]);
   });
 
   test("project sections sort by their display label", () => {
