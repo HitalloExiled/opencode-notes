@@ -107,6 +107,11 @@ export function NotesPill(props: { active: boolean }) {
       <ctx.ui.Button size="small" variant="ghost" icon="file-document" onClick={openNotesOverlay}>
         {t("launcher.label", noteCount())}
       </ctx.ui.Button>
+      {/* The overlay is fixed and rides the pill's slot item: no second mount. */}
+      <Show when={opened()}>
+        <style>{CSS}</style>
+        <NotesModal onClose={close} />
+      </Show>
     </Show>
   )
 }
@@ -182,18 +187,5 @@ function NotesModal(props: { onClose: () => void }) {
         </div>
       </div>
     </div>
-  )
-}
-
-/**
- * Mounted by the plugin's `window.bottom` slot item; renders the overlay only
- * while open, so the slot adds no visible row when idle.
- */
-export function NotesOverlay() {
-  return (
-    <Show when={opened()}>
-      <style>{CSS}</style>
-      <NotesModal onClose={close} />
-    </Show>
   )
 }

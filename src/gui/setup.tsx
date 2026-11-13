@@ -15,7 +15,7 @@ import type {
   SetupContext,
 } from "@opencode/plugin/gui"
 import { Command, MenuItem, Panel, Slot } from "@opencode/plugin/gui"
-import { NotesOverlay, NotesPill, startNotesCount } from "./launcher"
+import { NotesPill, startNotesCount } from "./launcher"
 import { NotesView } from "./view"
 
 export const openNotesId = "notes"
@@ -57,15 +57,14 @@ export function setup(ctx: SetupContext<never>): () => void {
     },
   }))
 
-  // The entry is a pill in the timeline's title row (session.header); the
-  // window.bottom item mounts the overlay and renders nothing while closed.
+  // The entry is a pill in the timeline's title row (session.header). The
+  // overlay rides the same slot item, fixed over the window.
   const stopCount = startNotesCount(ctx)
   ctx.add(Slot, {
     at: "session.header",
     order: 20,
     render: (input) => <NotesPill active={input.active} />,
   })
-  ctx.add(Slot, { at: "window.bottom", order: 20, render: () => <NotesOverlay /> })
 
   ctx.add(MenuItem, (): SessionPanelMenuItem => ({
     menu: "session.panel",
