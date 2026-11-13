@@ -254,6 +254,7 @@ export const NotesApi = Ipc.define({
   id: "notes",
   methods: {
     status: { output: statusSchema },
+    count: { output: Schema.Number },
     whoami: { output: Schema.String },
     list: { input: listOptionsSchema, output: Schema.Array(noteSchema) },
     view: { input: Schema.Number, output: Schema.optional(noteSchema) },

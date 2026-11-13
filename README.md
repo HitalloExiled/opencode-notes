@@ -56,12 +56,18 @@ registrar notas.
 3. **Busca e inspeção** — `search` (FTS5 quando disponível, senão `LIKE`),
    `view` (nota completa, inclusive retraídas), `doctor` (diagnóstico do
    subsistema).
-4. **Painel lateral (desktop)** — lista paginada, busca, filtros de
-   retraídas/projeto, detalhe com revisões e as ações (salvar, editar,
-   confirmar, questionar, retirar, fixar) sem sair do app. A lista é dividida
-   em seções rotuladas: as notas fixadas aparecem primeiro ("Fixadas"), e as
-   demais abaixo de "Outras notas".
-5. **Injeta o próprio contexto da camada** — no início da sessão (e de novo se
+4. **Painel lateral (desktop)** — lista paginada, busca, filtros (retraídas,
+   projeto atual, projetos em multiselect, escopo, categoria e tag), detalhe
+   com revisões e as ações (salvar, editar, confirmar, questionar, retirar,
+   fixar) sem sair do app. A lista é agrupada: **Fixadas** primeiro, depois uma
+   seção por projeto (A–Z) e, por último, **Outras notas** (escopo global ou
+   máquina).
+5. **Pill global "Notas · N"** — um pill na titlebar mostra o total de notas e
+   abre todas elas em um overlay (900px de largura, altura = viewport − 40px).
+   A titlebar coloca pills de plugins diferentes lado a lado (a faixa
+   `window.bottom` os empilharia). O overlay reusa o mesmo corpo do painel:
+   mesmos filtros, cartões e agrupamento, sem segunda implementação.
+6. **Injeta o próprio contexto da camada** — no início da sessão (e de novo se
    o diretório mudar) o plugin publica um bloco `<notes-context>` com as notas
    fixadas (escopo máquina, global e o projeto correspondente; corpo limitado)
    e um índice curto com a contagem por categoria e alguns títulos, para o

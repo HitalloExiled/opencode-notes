@@ -39,6 +39,8 @@ export type Filters = {
   projectOnly: boolean
   /** The current project path to match against when `projectOnly` is true. */
   projectPath: string
+  /** Restrict to notes touching any of these project paths. `[]` means all. */
+  projects?: readonly string[]
 }
 
 /**
@@ -50,7 +52,7 @@ export type Filters = {
  */
 export function applyFilters(
   res: Note[],
-  { scope, tag, category, showRetracted, projectOnly, projectPath }: Filters
+  { scope, tag, category, showRetracted, projectOnly, projectPath, projects = [] }: Filters
 ): Note[] {
   let out = res
   out = out.filter(
@@ -63,33 +65,84 @@ export function applyFilters(
   // project paths equals the path.
   if (projectOnly)
     out = out.filter((n) => n.scope === "project" && n.projects.includes(projectPath))
+  // Project multiselect: a note matches when any of its paths is selected, so
+  // a multi-project note shows up under each selected project.
+  if (projects.length)
+    out = out.filter((n) => n.projects.some((p) => projects.includes(p)))
   if (scope.length) out = out.filter((n) => scope.some((s) => noteMatchesScope(n, s)))
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
   if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))
   return out
 }
 
-/**
- * Stable partition: pinned notes first, everything else after. The relative
- * order inside each group is preserved (the store already returns them by
- * timestamp, so the list keeps its recency order within each section).
- *
- * The GUI applies this *after* the filters, so the pinned section is built from
- * whatever the search/filters currently match — and before pagination, so
- * pinned notes always land on the first pages.
- */
-export function sortPinnedFirst(notes: Note[]): Note[] {
-  const pinned: Note[] = []
-  const rest: Note[] = []
-  for (const n of notes) (n.pinned ? pinned : rest).push(n)
-  return [...pinned, ...rest]
+/** A section of the notes list. */
+export type NoteGroup = {
+  /** Stable key: "pinned", a project path, or "others". */
+  key: string
+  kind: "pinned" | "project" | "others"
+  /** The project path, for `kind: "project"`. */
+  project?: string
+  notes: Note[]
 }
 
 /**
- * The filter keys a note belongs to. A non-project note has a single key (its
- * scope type: `"all"` or `"machine"`); a project-scoped note has one key per
- * project path (falling back to `"project"` when the set is empty). A note
- * with multiple projects therefore matches several options at once.
+ * Group filtered notes for display: pinned first (lifted out of their project),
+ * then one section per project in label order, then the global/machine notes.
+ * A multi-project note belongs to its first path only, so no note repeats.
+ *
+ * `label` resolves a project path to the name shown in the header; it also
+ * orders the project sections (locale compare).
+ */
+export function groupNotes(
+  notes: Note[],
+  label: (path: string) => string = (path) => path
+): NoteGroup[] {
+  const pinned: Note[] = []
+  const byProject = new Map<string, Note[]>()
+  const others: Note[] = []
+  for (const note of notes) {
+    if (note.pinned) {
+      pinned.push(note)
+      continue
+    }
+    const project = note.scope === "project" ? note.projects[0] : undefined
+    if (!project) {
+      others.push(note)
+      continue
+    }
+    const list = byProject.get(project)
+    if (list) list.push(note)
+    else byProject.set(project, [note])
+  }
+
+  const groups: NoteGroup[] = []
+  if (pinned.length) groups.push({ key: "pinned", kind: "pinned", notes: pinned })
+  const projects = [...byProject.keys()].sort((a, b) => label(a).localeCompare(label(b)))
+  for (const project of projects) {
+    groups.push({ key: project, kind: "project", project, notes: byProject.get(project) ?? [] })
+  }
+  if (others.length) groups.push({ key: "others", kind: "others", notes: others })
+  return groups
+}
+
+/**
+ * Short project name for a section header: the basename, disambiguated with
+ * the parent folder when two paths share it.
+ */
+export function projectLabel(path: string, paths: readonly string[] = []): string {
+  const parts = path.split("/").filter(Boolean)
+  const base = parts.at(-1) ?? path
+  const sameBase = paths.filter((item) => (item.split("/").filter(Boolean).at(-1) ?? item) === base)
+  if (sameBase.length <= 1) return base
+  const parent = parts.at(-2)
+  return parent ? `${parent}/${base}` : base
+}
+
+/**
+ * The filter keys a note belongs to, one per project for a project-scoped
+ * note (falling back to "project" when the set is empty); a non-project note
+ * has a single key (its scope type). A multi-project note therefore matches
+ * several options at once.
  */
 export function scopeKeysOf(note: Note): readonly string[] {
   const s = note.scope

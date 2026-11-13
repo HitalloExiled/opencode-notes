@@ -14,12 +14,15 @@ import type {
   SessionPanelMenuItem,
   SetupContext,
 } from "@opencode/plugin/gui"
-import { Command, MenuItem, Panel } from "@opencode/plugin/gui"
+import { Command, MenuItem, Panel, Slot, TitlebarItem } from "@opencode/plugin/gui"
+import { supportedLocale } from "opencode-shared/gui"
+import { noteCount, NotesOverlay, openNotesOverlay, startNotesCount } from "./launcher"
+import { tStatic } from "./i18n"
 import { NotesView } from "./view"
 
 export const openNotesId = "notes"
 
-export function setup(ctx: SetupContext<never>): void {
+export function setup(ctx: SetupContext<never>): () => void {
   const text = (pt: string, en: string): string =>
     (ctx.locale.locale() ?? "").toLowerCase().startsWith("pt") ? pt : en
 
@@ -56,6 +59,18 @@ export function setup(ctx: SetupContext<never>): void {
     },
   }))
 
+  // Global entry point: a titlebar pill (the host lays pills side by side) plus
+  // the slot item that mounts the overlay; it renders nothing while closed.
+  const stopCount = startNotesCount(ctx)
+  ctx.add(TitlebarItem, (): TitlebarItem => ({
+    id: "notes",
+    icon: "file-document",
+    label: tStatic(supportedLocale(ctx.locale.locale()), "launcher.label", noteCount()),
+    title: tStatic(supportedLocale(ctx.locale.locale()), "modal.title"),
+    run: openNotesOverlay,
+  }))
+  ctx.add(Slot, { at: "window.bottom", order: 20, render: () => <NotesOverlay /> })
+
   ctx.add(MenuItem, (): SessionPanelMenuItem => ({
     menu: "session.panel",
     id: "notes",
@@ -70,4 +85,6 @@ export function setup(ctx: SetupContext<never>): void {
       }
     },
   }))
+
+  return stopCount
 }

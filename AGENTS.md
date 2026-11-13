@@ -35,8 +35,9 @@ src/store.ts             SHARED data layer: node:sqlite, schema v9, migrations, 
 src/gui.tsx              ./gui-experimental entry → { main, setup }
 src/gui/main.ts          main-process IPC provider (NotesApi); maps DB rows → IPC shapes
 src/gui/contract.ts      NotesApi IPC contract + zod schemas (the GUI↔main boundary)
-src/gui/setup.tsx        renderer: registers the Notes tab, command, "+ / New tab" menu
-src/gui/view.tsx         the SolidJS UI (all inline CSS + markup live here)
+src/gui/setup.tsx        renderer: registers the Notes tab, the window.bottom launcher, menu
+src/gui/view.tsx         the SolidJS UI: NotesView (panel wrapper) and NotesBody (shared)
+src/gui/launcher.tsx     titlebar pill + the all-notes overlay (mounted by a slot item)
 src/gui/filters.ts       pure filter/display logic (deterministic, unit-tested)
 src/gui/i18n.ts          PT-BR / EN-US copy (follows the Opencode locale)
 test/                    bun tests (see "Tests")
@@ -59,6 +60,23 @@ These are standing constraints, not suggestions:
   reads are unreliable. (e.g. project list = `ctx.client.project.list()`.)
 - **Do not write data inside the repo.** All DB writes go to `notes.db` (see
   "Live paths").
+- **One notes UI, two surfaces.** `NotesBody` (`src/gui/view.tsx`) owns load,
+  filters, cards, actions, pagination and the grouped listing; `src/gui/setup.tsx`
+  renders it in the panel and `src/gui/launcher.tsx` inside the global overlay.
+  Never duplicate filter/list/card logic in the launcher: it owns only the bar,
+  the overlay shell and the count. Panel-only affordances are the "current
+  project" toggle and attaching a note to the composer.
+- **The global entry is a titlebar pill, not a bottom bar.** `TitlebarItem`
+  pills from different plugins sit side by side; the host stacks `window.bottom`
+  items. The pill shows the total note count (`NotesApi.count`), refreshed on
+  mount, on window focus and every 60s (the plugin publishes no GUI events).
+- **The overlay needs a slot item.** A plugin has no other place in the tree,
+  so `setup` still registers a `window.bottom` item that renders the overlay and
+  nothing while closed.
+- **The notes list is grouped, not partitioned.** `groupNotes` (pure, in
+  `src/gui/filters.ts`) yields pinned first, then one section per project in
+  label order, then global/machine notes. A multi-project note belongs to its
+  first path only, so it never repeats.
 - **Tool descriptions fit the Code Mode catalog budget.** The catalog truncates
   a description around 119 characters, so keep it ≤110 with the load-bearing
   sentence first; parameter descriptions stay ≤6 words.

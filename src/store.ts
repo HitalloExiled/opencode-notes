@@ -672,6 +672,14 @@ export function listNotes(db: Db, opts: ListOptions = {}): NoteRow[] {
   return withProjects(rows)
 }
 
+/** Total notes in the database, retracted ones included. */
+export function countNotes(db: Db): number {
+  const row = db.prepare("SELECT COUNT(*) AS total FROM notes").get() as
+    | { total: number }
+    | undefined
+  return row?.total ?? 0
+}
+
 export function viewNote(db: Db, id: number): NoteRow | undefined {
   return loadNote(db, id) ?? undefined
 }

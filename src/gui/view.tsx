@@ -15,7 +15,7 @@
 
 import { createEffect, createMemo, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
-import { Show } from "solid-js"
+import { For, Show } from "solid-js"
 import { usePanel, usePlugin } from "@opencode/plugin/gui"
 import { SHARED_CSS, ScrollNav, createScrollNav, EmptyState, ErrorBanner, LoadingRow } from "opencode-shared/gui"
 import { scopeChipLabel, useT } from "./i18n"
@@ -26,11 +26,13 @@ import {
   filterByQuery,
   noteMatchesScope,
   pruneSelection,
+  groupNotes,
+  projectLabel,
   scopeKeysOf,
   scopeOf,
-  sortPinnedFirst,
   tagsOf,
 } from "./filters"
+import type { NoteGroup } from "./filters"
 
 // `value` stays in English (it is the data written to the DB and read by the
 // notes tools). Display text lives in the i18n tables (`category.<value>`);
@@ -251,9 +253,22 @@ let attachSeq = 0
 const [renderMode, setRenderMode] = createSignal<"markdown" | "raw">("markdown")
 
 export function NotesView() {
-  const ctx = usePlugin()
   const panel = usePanel()
+  return <NotesBody visible={() => panel.visible()} mode="panel" />
+}
+
+/**
+ * The notes UI itself, shared by the side panel and the global modal.
+ *
+ * Load, filters, cards, actions, pagination and the grouped listing live here
+ * once; the wrappers only decide the surface (`mode`) and visibility. Panel-only
+ * affordances are the "current project" toggle and attaching a note to the
+ * composer — a global list must not push into a session the user did not open.
+ */
+export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "modal" }) {
+  const ctx = usePlugin()
   const api = ctx.main(NotesApi)
+  const modal = () => props.mode === "modal"
   // Localized strings for the active Opencode locale (pt-br or en-us,
   // everything else falls back to en-us).
   const t = useT()
@@ -284,6 +299,7 @@ export function NotesView() {
   const [showRetracted, setShowRetracted] = createSignal(false)
   const [projectOnly, setProjectOnly] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
+  const [projectFilter, setProjectFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
   const [categoryFilter, setCategoryFilter] = createSignal<string[]>([])
   // Only one combo can be open at a time; the single signal drives the
@@ -346,7 +362,7 @@ export function NotesView() {
 
   // Toggle a combo open/closed (switching to another simply re-targets the
   // single `openFilter`, so only one panel is ever visible).
-  const toggleFilter = (which: "scope" | "tag" | "category") =>
+  const toggleFilter = (which: "scope" | "tag" | "category" | "project") =>
     setOpenFilter((v) => (v === which ? null : which))
 
   // Close any open combo when the pointer lands outside a `.filter-cell`, or on
@@ -376,6 +392,7 @@ export function NotesView() {
     const q = query().trim()
     const scope = scopeFilter()
     const tag = tagFilter()
+    const projects = projectFilter()
     setLoading(true)
     setError("")
     try {
@@ -389,8 +406,10 @@ export function NotesView() {
         a.length === b.length && a.every((v, i) => v === b[i])
       const nextScope = scope.filter((s) => all.some((n) => noteMatchesScope(n, s)))
       const nextTag = tag.filter((t) => all.some((n) => tagsOf(n).includes(t)))
+      const nextProject = projects.filter((p) => all.some((n) => n.projects.includes(p)))
       if (!arraysSame(scope, nextScope)) setScopeFilter(nextScope)
       if (!arraysSame(tag, nextTag)) setTagFilter(nextTag)
+      if (!arraysSame(projects, nextProject)) setProjectFilter(nextProject)
       // Store the unfiltered result; scope/tag/retracted/pinned are applied
       // reactively in `filteredNotes`, so changing a filter never needs a
       // re-fetch.
@@ -477,6 +496,20 @@ export function NotesView() {
     if (current.trim()) paths.add(current.trim())
     return [...paths].sort((a, b) => a.localeCompare(b))
   })
+
+  // Projects that actually have notes: the options in the filter and the
+  // sections of the grouped list.
+  const noteProjectPaths = createMemo(() =>
+    [
+      ...new Set(
+        allNotes()
+          .filter((n) => n.scope === "project")
+          .flatMap((n) => n.projects)
+      ),
+    ].sort((a, b) => a.localeCompare(b))
+  )
+  const projectSectionLabel = (path: string): string =>
+    projectLabel(path, noteProjectPaths())
 
   const reloadSelected = async (id: number | null) => {
     if (id === null) {
@@ -693,15 +726,13 @@ export function NotesView() {
       showRetracted: showRetracted(),
       projectOnly: projectOnly(),
       projectPath: currentProjectPath(),
+      projects: projectFilter(),
     })
   )
-  // Pinned notes are lifted to the top as a stable partition, after filtering
-  // and before pagination — so they always occupy the first pages even while a
-  // search/filter narrows the list.
-  const sortedNotes = createMemo(() => sortPinnedFirst(filteredNotes()))
-  // Only label an "others" section when there actually is a pinned section to
-  // contrast with; a list of purely unpinned notes needs no second header.
-  const hasPinned = createMemo(() => sortedNotes().some((n) => n.pinned))
+  // Grouped listing: pinned first (lifted out of its project), then one section
+  // per project in label order, then global/machine notes. The grouping is pure
+  // (`groupNotes`) and runs after the filters, before pagination.
+  const groups = createMemo(() => groupNotes(filteredNotes(), projectSectionLabel))
   const count = createMemo(() => filteredNotes().length)
   const emptyTitle = () =>
     query().trim()
@@ -719,13 +750,25 @@ export function NotesView() {
         : projectOnly()
           ? t("empty.hint.project")
           : t("empty.hint.none")
-  const visibleNotes = createMemo(() => sortedNotes().slice(0, visible()))
+  // Pagination runs across the sections: take notes in order until the page is
+  // full, so a section can start mid-list without breaking the "load more".
+  const visibleGroups = createMemo(() => {
+    const out: NoteGroup[] = []
+    let left = visible()
+    for (const group of groups()) {
+      if (left <= 0) break
+      const notes = group.notes.slice(0, left)
+      if (notes.length > 0) out.push({ ...group, notes })
+      left -= notes.length
+    }
+    return out
+  })
   const nav = createScrollNav({
-    hasMore: () => visible() < sortedNotes().length,
+    hasMore: () => visible() < filteredNotes().length,
     loadingMore: () => false,
     loadMore: () => setVisible((value) => value + CHUNK_SIZE),
-    visible: () => panel.visible(),
-    items: () => sortedNotes().length,
+    visible: () => props.visible(),
+    items: () => filteredNotes().length,
   })
   // A new query or filter starts from the top of the list.
   createEffect(() => {
@@ -880,18 +923,20 @@ export function NotesView() {
             <span class="note-title">{n.title}</span>
             {alertBadges(n)}
           </div>
-          <ctx.ui.Button
-            class="note-attach"
-            size="small"
-            variant="ghost-muted"
-            icon="plus"
-            onClick={(event) => {
-              event.stopPropagation()
-              void addToContext(n)
-            }}
-          >
-            {t("actions.attachTooltip")}
-          </ctx.ui.Button>
+          <Show when={!modal()}>
+            <ctx.ui.Button
+              class="note-attach"
+              size="small"
+              variant="ghost-muted"
+              icon="plus"
+              onClick={(event) => {
+                event.stopPropagation()
+                void addToContext(n)
+              }}
+            >
+              {t("actions.attachTooltip")}
+            </ctx.ui.Button>
+          </Show>
         </div>
         <Show when={tagsOf(n).length > 0 || noteScopeLabel(n)}>
           <div class="note-pills">
@@ -1519,13 +1564,15 @@ export function NotesView() {
         >
           {t("filterRetracted")}
         </button>
-        <button
-          type="button"
-          class={`notes-toggle ${projectOnly() ? "is-active" : ""}`}
-          onClick={() => setProjectOnly(!projectOnly())}
-        >
-          {t("filterProject")}
-        </button>
+        <Show when={!modal()}>
+          <button
+            type="button"
+            class={`notes-toggle ${projectOnly() ? "is-active" : ""}`}
+            onClick={() => setProjectOnly(!projectOnly())}
+          >
+            {t("filterProject")}
+          </button>
+        </Show>
       </div>
 
         <div class="notes-filter-row">
@@ -1541,6 +1588,20 @@ export function NotesView() {
               which="scope"
               onOpenChange={() => toggleFilter("scope")}
               optionTitle={(opt) => (opt.startsWith("/") ? opt : undefined)}
+            />
+          </Show>
+          <Show when={noteProjectPaths().length > 0}>
+            <MultiSelect
+              label={t("filter.projects.label")}
+              placeholder={t("filter.projects.placeholder")}
+              options={noteProjectPaths()}
+              display={projectSectionLabel}
+              optionTitle={(opt) => opt}
+              value={projectFilter}
+              onValueChange={setProjectFilter}
+              openFilter={openFilter}
+              which="project"
+              onOpenChange={() => toggleFilter("project")}
             />
           </Show>
           <MultiSelect
@@ -1702,24 +1763,20 @@ export function NotesView() {
         <Show when={filteredNotes().length === 0 && !loading()}>
           <EmptyState icon="file-document" title={emptyTitle()} hint={emptyHint()} />
         </Show>
-        {visibleNotes().map((n, i, arr) => (
-          <>
-            {/* Each section opens with its own header. */}
-            <Show when={n.pinned && (i === 0 || !arr[i - 1]?.pinned)}>
-              <div class="note-group-head">{t("group.pinned")}</div>
-            </Show>
-            <Show
-              when={
-                !n.pinned &&
-                hasPinned() &&
-                (i > 0 ? arr[i - 1]?.pinned : false)
-              }
-            >
-              <div class="note-group-head">{t("group.others")}</div>
-            </Show>
-            {card(n)}
-          </>
-        ))}
+        <For each={visibleGroups()}>
+          {(group) => (
+            <>
+              <div class="note-group-head">
+                {group.kind === "pinned"
+                  ? t("group.pinned")
+                  : group.kind === "others"
+                    ? t("group.others")
+                    : projectSectionLabel(group.project ?? "")}
+              </div>
+              <For each={group.notes}>{(n) => card(n)}</For>
+            </>
+          )}
+        </For>
         </div>
         <ScrollNav nav={nav} topLabel={t("scroll.top")} bottomLabel={t("scroll.bottom")} />
       </div>

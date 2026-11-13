@@ -15,12 +15,13 @@ import {
   applyFilters,
   displayOf,
   filterByQuery,
+  groupNotes,
   noteMatchesScope,
+  projectLabel,
   pruneSelection,
   scopeLabel,
   scopeKeysOf,
   scopeOf,
-  sortPinnedFirst,
   tagsOf,
 } from "../src/gui/filters";
 
@@ -197,6 +198,7 @@ function idsOf(
     category?: string[];
     projectOnly?: boolean;
     projectPath?: string;
+    projects?: string[];
   },
   notes: Note[] = base,
 ) {
@@ -207,6 +209,7 @@ function idsOf(
     showRetracted: false,
     projectOnly: p.projectOnly ?? false,
     projectPath: p.projectPath ?? "",
+    projects: p.projects ?? [],
   }).map((n) => n.id);
 }
 
@@ -367,39 +370,87 @@ describe("applyFilters (retracted)", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* sortPinnedFirst                                                      */
+/* applyFilters — project multiselect                                   */
 /* ------------------------------------------------------------------ */
 
-describe("sortPinnedFirst", () => {
-  test("empty -> empty", () => {
-    expect(sortPinnedFirst([])).toEqual([]);
+describe("applyFilters (projects multiselect)", () => {
+  test("matches a note when any of its project paths is selected", () => {
+    expect(idsOf({ projects: [TOOLS] }, multiBase)).toEqual([2, 8]);
+    expect(idsOf({ projects: [INFRA] }, multiBase)).toEqual([1, 3, 8]);
+    expect(idsOf({ projects: [INFRA, TOOLS] }, multiBase)).toEqual([1, 2, 3, 8]);
   });
 
-  test("pinned notes move first, relative order preserved inside each group", () => {
-    const notes = [
-      note({ id: 1 }),
-      note({ id: 2, pinned: true }),
-      note({ id: 3 }),
-      note({ id: 4, pinned: true }),
-      note({ id: 5 }),
-    ];
-    expect(sortPinnedFirst(notes).map((n) => n.id)).toEqual([2, 4, 1, 3, 5]);
+  test("an empty selection means every note", () => {
+    expect(idsOf({ projects: [] }, multiBase)).toHaveLength(multiBase.length);
   });
 
-  test("all pinned / all unpinned -> unchanged order", () => {
-    const pinned = [
-      note({ id: 1, pinned: true }),
-      note({ id: 2, pinned: true }),
-    ];
-    expect(sortPinnedFirst(pinned).map((n) => n.id)).toEqual([1, 2]);
-    const plain = [note({ id: 1 }), note({ id: 2 })];
-    expect(sortPinnedFirst(plain).map((n) => n.id)).toEqual([1, 2]);
+  test("combines with the scope filter", () => {
+    expect(idsOf({ projects: [TOOLS], scope: [TOOLS] }, multiBase)).toEqual([2, 8]);
+    // the multi-project note matches both sides (INFRA via scope, TOOLS via project)
+    expect(idsOf({ projects: [TOOLS], scope: [INFRA] }, multiBase)).toEqual([8]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* groupNotes / projectLabel                                            */
+/* ------------------------------------------------------------------ */
+
+const grouping: Note[] = [
+  note({ id: 1, scope: "project", projects: [INFRA], pinned: true }),
+  note({ id: 2, scope: "project", projects: [INFRA] }),
+  note({ id: 3, scope: "project", projects: [TOOLS] }),
+  note({ id: 4, scope: "all" }),
+  note({ id: 5, scope: "machine" }),
+  note({ id: 6, scope: "project", projects: [INFRA, TOOLS] }),
+];
+
+const groupIds = (notes: Note[], label?: (path: string) => string) =>
+  groupNotes(notes, label).map((g) => ({
+    key: g.key,
+    kind: g.kind,
+    ids: g.notes.map((n) => n.id),
+  }));
+
+describe("groupNotes", () => {
+  test("pinned first, then projects, then others", () => {
+    const groups = groupIds(grouping);
+    expect(groups.map((g) => g.kind)).toEqual(["pinned", "project", "project", "others"]);
+    expect(groups[0]!.ids).toEqual([1]);
+    expect(groups.at(-1)!.ids).toEqual([4, 5]);
   });
 
-  test("does not mutate the input", () => {
-    const notes = [note({ id: 1 }), note({ id: 2, pinned: true })];
-    sortPinnedFirst(notes);
-    expect(notes.map((n) => n.id)).toEqual([1, 2]);
+  test("a pinned note is lifted out of its project section", () => {
+    const infra = groupIds(grouping).find((g) => g.key === INFRA);
+    expect(infra?.ids).toEqual([2, 6]);
+  });
+
+  test("a multi-project note goes to its first path only", () => {
+    for (const group of groupIds(grouping)) {
+      expect(group.ids.filter((id) => id === 6)).toHaveLength(group.key === INFRA ? 1 : 0);
+    }
+  });
+
+  test("empty groups are omitted", () => {
+    const groups = groupIds([note({ id: 9, scope: "all" })]);
+    expect(groups.map((g) => g.kind)).toEqual(["others"]);
+  });
+
+  test("project sections sort by their display label", () => {
+    const groups = groupIds(grouping, (path) => (path === INFRA ? "zulu" : "alpha"));
+    expect(groups.filter((g) => g.kind === "project").map((g) => g.key)).toEqual([TOOLS, INFRA]);
+  });
+});
+
+describe("projectLabel", () => {
+  test("uses the basename when it is unique", () => {
+    expect(projectLabel(INFRA, [INFRA, TOOLS])).toBe("agentic-dev-infra");
+  });
+
+  test("disambiguates with the parent folder when two paths share a basename", () => {
+    const a = "/home/user/one/app";
+    const b = "/srv/two/app";
+    expect(projectLabel(a, [a, b])).toBe("one/app");
+    expect(projectLabel(b, [a, b])).toBe("two/app");
   });
 });
 

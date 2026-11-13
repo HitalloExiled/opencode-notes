@@ -1,6 +1,6 @@
 /* Notes GUI copy. PT-BR and EN-US; EN-US is the fallback. */
 
-import { createI18n } from "opencode-shared/gui";
+import { createI18n, interpolate, supportedLocale } from "opencode-shared/gui";
 
 const EN = {
   notesTitle: "Notes",
@@ -10,6 +10,9 @@ const EN = {
   searchPlaceholder: "Search memory…",
   "group.pinned": "Pinned",
   "group.others": "Other notes",
+  "launcher.label": "Notes · {0}",
+  "modal.title": "All notes",
+  "modal.close": "Close",
   filterRetracted: "Retracted",
   filterProject: "Project",
   scopeAll: "Global",
@@ -17,6 +20,8 @@ const EN = {
   scopeProject: "Project",
   "filter.scope.label": "Scope",
   "filter.scope.placeholder": "All scopes",
+  "filter.projects.label": "Projects",
+  "filter.projects.placeholder": "All projects",
   "filter.category.label": "Category",
   "filter.category.placeholder": "All categories",
   "filter.tag.label": "Tag",
@@ -124,6 +129,9 @@ const PT: Record<keyof typeof EN, string> = {
   searchPlaceholder: "Buscar na memória…",
   "group.pinned": "Fixadas",
   "group.others": "Outras notas",
+  "launcher.label": "Notas · {0}",
+  "modal.title": "Todas as notas",
+  "modal.close": "Fechar",
   filterRetracted: "Retiradas",
   filterProject: "Projeto",
   scopeAll: "Global",
@@ -131,6 +139,8 @@ const PT: Record<keyof typeof EN, string> = {
   scopeProject: "Projeto",
   "filter.scope.label": "Escopo",
   "filter.scope.placeholder": "Todos os escopos",
+  "filter.projects.label": "Projetos",
+  "filter.projects.placeholder": "Todos os projetos",
   "filter.category.label": "Categoria",
   "filter.category.placeholder": "Todas as categorias",
   "filter.tag.label": "Tag",
@@ -229,9 +239,20 @@ const PT: Record<keyof typeof EN, string> = {
   "form.overlay.edit": "Editar nota",
 }
 
-const { useLocale, useT } = createI18n(EN, PT)
+const i18n = createI18n(EN, PT)
+const { useLocale, useT } = i18n
 
 export { useLocale, useT }
+
+/**
+ * Translation outside a component or contribution, such as the titlebar pill
+ * registered from `setup()`, where `usePlugin()` has no provider.
+ */
+export function tStatic(rawLocale: string | undefined, key: string, ...args: unknown[]): string {
+  const table = i18n.tables[supportedLocale(rawLocale)]
+  const value = table[key] ?? (typeof args[0] === "string" ? args[0] : key)
+  return interpolate(value, args)
+}
 
 /**
  * Display label for a note's scope: the type names are localized; the project

@@ -25,6 +25,7 @@ import type {
 } from "./contract"
 import {
   addNote,
+  countNotes,
   confirmNote,
   disputeNote,
   getStore,
@@ -114,6 +115,11 @@ export function main(ctx: MainContext): void {
         hasFts: store?.fts ?? false,
         dbPath: notesDbPath(),
       }
+    },
+
+    count: async (): Promise<number> => {
+      const { db } = await requireStore()
+      return countNotes(db)
     },
 
     list: async (opts: ListOptions): Promise<Note[]> => {
