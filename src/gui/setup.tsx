@@ -62,7 +62,7 @@ export function setup(ctx: SetupContext<never>): () => void {
   const stopCount = startNotesCount(ctx)
   ctx.add(Slot, {
     at: "session.header",
-    order: 20,
+    order: -5,
     render: (input) => <NotesPill active={input.active} />,
   })
 
