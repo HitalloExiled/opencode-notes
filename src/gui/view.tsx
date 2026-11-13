@@ -303,6 +303,8 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   // contributes one key per project path, so all its projects appear as
   // distinct options.
   const scopeOptions = createMemo(() => scopeOptionsOf(allNotes()))
+  // The divider belongs once, between the type keys and the first project.
+  const firstProject = createMemo(() => scopeOptions().find((opt) => opt.startsWith("/")))
   const tagOptions = createMemo(() =>
     [...new Set(allNotes().flatMap(tagsOf))].sort((a, b) => a.localeCompare(b))
   )
@@ -1266,7 +1268,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
               which="scope"
               onOpenChange={() => toggleFilter("scope")}
               optionTitle={(opt) => (opt.startsWith("/") ? opt : undefined)}
-              dividerBefore={(opt) => opt.startsWith("/")}
+              dividerBefore={(opt) => opt === firstProject()}
               t={t}
               class="notes-filter-cell"
             />
