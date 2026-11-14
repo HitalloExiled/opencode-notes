@@ -24,7 +24,8 @@ const CSS = `
 .notes-modal-scrim {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  /* Above the app chrome (~60-70), below the host dialogs (1000+). */
+  z-index: 999;
   display: flex;
   align-items: center;
   justify-content: center;
