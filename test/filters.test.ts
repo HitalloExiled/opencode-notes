@@ -369,6 +369,30 @@ describe("applyFilters (retracted)", () => {
   });
 });
 
+describe("applyFilters (pinnedOnly)", () => {
+  const notes = [
+    note({ id: 1, pinned: true, scope: "all" }),
+    note({ id: 2, pinned: false, scope: "all" }),
+    note({ id: 3, pinned: true, scope: "project", projects: [INFRA] }),
+  ];
+
+  const filtered = (pinnedOnly: boolean) =>
+    applyFilters(notes, {
+      scope: [],
+      tag: [],
+      category: [],
+      showRetracted: false,
+      projectOnly: false,
+      projectPath: "",
+      pinnedOnly,
+    }).map((n) => n.id);
+
+  test("pinnedOnly keeps only pinned notes", () => {
+    expect(filtered(true)).toEqual([1, 3]);
+    expect(filtered(false)).toEqual([1, 2, 3]);
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /* scopeOptionsOf                                                       */
 /* ------------------------------------------------------------------ */

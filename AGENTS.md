@@ -83,7 +83,8 @@ These are standing constraints, not suggestions:
 - **The panel is scoped to the routed project.** It lists only notes with
   `scope === "project"` whose `projects` include the session's project path;
   global/machine notes live in the global overlay. The panel therefore has no
-  project or scope filter (search, category, tag and retracted remain).
+  project or scope filter (search, pinned-only, category, tag and retracted
+  remain).
 - **The notes list is ordered, and sections come from the page.** `orderNotes`
   (pure, in `src/gui/filters.ts`) sorts the global overlay by project
   (pinned first inside each, others last) and the panel by pinned/recency;

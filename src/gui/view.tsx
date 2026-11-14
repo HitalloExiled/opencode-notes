@@ -127,6 +127,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
   /* ---------- state ---------- */
   const [query, setQuery] = createSignal("")
   const [showRetracted, setShowRetracted] = createSignal(false)
+  const [pinnedOnly, setPinnedOnly] = createSignal(false)
   const [scopeFilter, setScopeFilter] = createSignal<string[]>([])
   const [tagFilter, setTagFilter] = createSignal<string[]>([])
   const [categoryFilter, setCategoryFilter] = createSignal<string[]>([])
@@ -551,6 +552,7 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
       tag: tagFilter(),
       category: categoryFilter(),
       showRetracted: showRetracted(),
+      pinnedOnly: pinnedOnly(),
       projectOnly: !modal(),
       projectPath: currentProjectPath(),
     })
@@ -1252,6 +1254,13 @@ export function NotesBody(props: { visible: () => boolean; mode?: "panel" | "mod
           onClick={() => setShowRetracted(!showRetracted())}
         >
           {t("filterRetracted")}
+        </button>
+        <button
+          type="button"
+          class={`notes-toggle ${pinnedOnly() ? "is-active" : ""}`}
+          onClick={() => setPinnedOnly(!pinnedOnly())}
+        >
+          {t("filterPinned")}
         </button>
       </div>
 

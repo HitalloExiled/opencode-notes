@@ -39,6 +39,8 @@ export type Filters = {
   projectOnly: boolean
   /** The current project path to match against when `projectOnly` is true. */
   projectPath: string
+  /** Keep only pinned notes. */
+  pinnedOnly?: boolean
 }
 
 /**
@@ -50,7 +52,7 @@ export type Filters = {
  */
 export function applyFilters(
   res: Note[],
-  { scope, tag, category, showRetracted, projectOnly, projectPath }: Filters
+  { scope, tag, category, showRetracted, projectOnly, projectPath, pinnedOnly }: Filters
 ): Note[] {
   let out = res
   out = out.filter(
@@ -63,6 +65,7 @@ export function applyFilters(
   // project paths equals the path.
   if (projectOnly)
     out = out.filter((n) => n.scope === "project" && n.projects.includes(projectPath))
+  if (pinnedOnly) out = out.filter((n) => n.pinned)
   if (scope.length) out = out.filter((n) => scope.some((s) => noteMatchesScope(n, s)))
   if (tag.length) out = out.filter((n) => tagsOf(n).some((t) => tag.includes(t)))
   if (category.length) out = out.filter((n) => category.includes(n.category ?? ""))
