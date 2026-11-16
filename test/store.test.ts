@@ -18,9 +18,20 @@ import {
   noteHistory,
   parseScope,
   updateNote,
+  type NoteRow,
 } from "../src/store";
 
 const emptyDb = () => new DatabaseSync(":memory:");
+
+/**
+ * `expect(result.ok).toBe(true)` does not narrow a union for TypeScript. This
+ * keeps the assertion and returns the success branch, so `note` is typed.
+ */
+function noteOf(result: { ok: true; note: NoteRow } | { ok: false; error: string }): NoteRow {
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error(result.error);
+  return result.note;
+}
 
 /* ------------------------------------------------------------------ */
 /* normalizeCategory                                                     */
@@ -148,7 +159,7 @@ describe("MIGRATION_007 (categories without '#')", () => {
       content: "Symptom: x. Cause: y. Solution: z.",
     });
     expect(res.ok).toBe(true);
-    expect(res.note!.category).toBe("problem");
+    expect(noteOf(res).category).toBe("problem");
   });
 });
 
@@ -330,8 +341,8 @@ describe("addNote (scope + projects)", () => {
       projects: ["/abs/path"],
     });
     expect(res.ok).toBe(true);
-    expect(res.note!.scope).toBe("project");
-    expect(res.note!.projects).toEqual(["/abs/path"]);
+    expect(noteOf(res).scope).toBe("project");
+    expect(noteOf(res).projects).toEqual(["/abs/path"]);
 
     // several paths -> all stored (order-preserving, deduplicated)
     const res2 = addNote(db, {
@@ -342,7 +353,7 @@ describe("addNote (scope + projects)", () => {
       projects: ["/b", "/a", "/b"],
     });
     // Read order is deterministic (sorted), independent of insertion order.
-    expect(res2.note!.projects).toEqual(["/a", "/b"]);
+    expect(noteOf(res2).projects).toEqual(["/a", "/b"]);
   });
 
   test("'global'/'all'/'none' -> 'all'; 'machine' discards any projects", async () => {
@@ -350,12 +361,12 @@ describe("addNote (scope + projects)", () => {
     initSchema(db);
 
     const g = addNote(db, { category: "decision", title: "t", content: "ok", scope: "global", projects: ["/x"] });
-    expect(g.note!.scope).toBe("all");
-    expect(g.note!.projects).toEqual([]);
+    expect(noteOf(g).scope).toBe("all");
+    expect(noteOf(g).projects).toEqual([]);
 
     const m = addNote(db, { category: "decision", title: "t", content: "ok", scope: "machine", projects: ["/y"] });
-    expect(m.note!.scope).toBe("machine");
-    expect(m.note!.projects).toEqual([]);
+    expect(noteOf(m).scope).toBe("machine");
+    expect(noteOf(m).projects).toEqual([]);
   });
 
   test("project scope with no projects is rejected (v9 no longer fills paths from legacy 'project:X')", async () => {
@@ -375,8 +386,8 @@ describe("addNote (scope + projects)", () => {
     const db = legacyV7Db();
     initSchema(db);
     const res = addNote(db, { category: "decision", title: "t", content: "ok" });
-    expect(res.note!.scope).toBe("all");
-    expect(res.note!.projects).toEqual([]);
+    expect(noteOf(res).scope).toBe("all");
+    expect(noteOf(res).projects).toEqual([]);
   });
 });
 
@@ -392,12 +403,12 @@ describe("updateNote (scope + projects)", () => {
       projects: ["/abs/path"],
     });
     expect(created.ok).toBe(true);
-    const id = created.note!.id;
+    const id = noteOf(created).id;
 
     const res = updateNote(db, { id, scope: "machine" });
     expect(res.ok).toBe(true);
-    expect(res.note!.scope).toBe("machine");
-    expect(res.note!.projects).toEqual([]);
+    expect(noteOf(res).scope).toBe("machine");
+    expect(noteOf(res).projects).toEqual([]);
   });
 
   test("updating the project paths works, and project -> project keeps the type", async () => {
@@ -410,18 +421,18 @@ describe("updateNote (scope + projects)", () => {
       scope: "project",
       projects: ["/old/path"],
     });
-    const id = created.note!.id;
+    const id = noteOf(created).id;
 
     // no scope passed: existing project scope is preserved, set replaced
     const res = updateNote(db, { id, projects: ["/new/path"] });
     expect(res.ok).toBe(true);
-    expect(res.note!.scope).toBe("project");
-    expect(res.note!.projects).toEqual(["/new/path"]);
+    expect(noteOf(res).scope).toBe("project");
+    expect(noteOf(res).projects).toEqual(["/new/path"]);
 
     const res2 = updateNote(db, { id, projects: ["/b", "/a", "/b"] });
     expect(res2.ok).toBe(true);
     // Read order is deterministic (sorted), independent of insertion order.
-    expect(res2.note!.projects).toEqual(["/a", "/b"]);
+    expect(noteOf(res2).projects).toEqual(["/a", "/b"]);
   });
 
   test("switching to 'all' clears paths; the revision snapshot keeps the old set", async () => {
@@ -434,16 +445,17 @@ describe("updateNote (scope + projects)", () => {
       scope: "project",
       projects: ["/old/path", "/other/path"],
     });
-    const id = created.note!.id;
+    const id = noteOf(created).id;
 
     const res = updateNote(db, { id, scope: "all" });
     expect(res.ok).toBe(true);
-    expect(res.note!.scope).toBe("all");
-    expect(res.note!.projects).toEqual([]);
+    expect(noteOf(res).scope).toBe("all");
+    expect(noteOf(res).projects).toEqual([]);
 
     const history = noteHistory(db, id);
     expect(history?.revisions.length).toBeGreaterThan(0);
-    expect(history?.revisions[0].scope).toBe("project");
-    expect(history?.revisions[0].projects).toEqual(["/old/path", "/other/path"]);
+    const first = history!.revisions[0]!;
+    expect(first.scope).toBe("project");
+    expect(first.projects).toEqual(["/old/path", "/other/path"]);
   });
 });

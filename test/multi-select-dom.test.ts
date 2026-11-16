@@ -18,14 +18,14 @@ import { Window } from "happy-dom";
 const win = new Window();
 for (const key of Object.keys(win)) {
   if (key in globalThis) continue;
-  globalThis[key] = (win as any)[key];
+  (globalThis as any)[key] = (win as any)[key];
 }
-globalThis.document = win.document;
-globalThis.window = win;
+(globalThis as any).document = win.document;
+(globalThis as any).window = win;
 
 const { createEffect, createMemo, createSignal } = (await import(
   "solid-js/dist/solid.js"
-)) as any;
+)) as typeof import("solid-js");
 
 const { applyFilters } = (await import("../src/gui/filters")) as any;
 
@@ -191,7 +191,7 @@ describe("MultiSelect combo (DOM)", () => {
     expect(idsOf(s.filteredNotes())).toEqual([1, 2, 4]);
 
     // Click "project:b" checkbox (index 1) to UNCHECK it.
-    s.boxes[1].el.click();
+    s.boxes[1]!.el.click();
     await flush();
 
     // The selection signal lost b.
@@ -199,15 +199,15 @@ describe("MultiSelect combo (DOM)", () => {
     // The real filter narrowed to a-notes only (note 2 was project:b).
     expect(idsOf(s.filteredNotes())).toEqual([1, 4]);
     // The other checkboxes keep their correct checked-state.
-    expect(s.boxes[0].el.checked).toBe(true);
-    expect(s.boxes[1].el.checked).toBe(false);
-    expect(s.boxes[2].el.checked).toBe(false);
+    expect(s.boxes[0]!.el.checked).toBe(true);
+    expect(s.boxes[1]!.el.checked).toBe(false);
+    expect(s.boxes[2]!.el.checked).toBe(false);
   });
 
   test("close/reopen preserves selection state & the filter (keep-mounted fix)", async () => {
     const s = buildScopeFilter();
     await flush();
-    s.boxes[1].el.click(); // uncheck b
+    s.boxes[1]!.el.click(); // uncheck b
     await flush();
     expect(idsOf(s.filteredNotes())).toEqual([1, 4]);
 
@@ -217,8 +217,8 @@ describe("MultiSelect combo (DOM)", () => {
     s.setOpenFilter("scope");
     await flush();
     // States survive the round-trip; filter unchanged.
-    expect(s.boxes[0].el.checked).toBe(true);
-    expect(s.boxes[1].el.checked).toBe(false);
+    expect(s.boxes[0]!.el.checked).toBe(true);
+    expect(s.boxes[1]!.el.checked).toBe(false);
     expect(s.filteredNotes().length).toBe(2);
     expect(idsOf(s.filteredNotes())).toEqual([1, 4]);
   });
@@ -227,11 +227,11 @@ describe("MultiSelect combo (DOM)", () => {
     const s = buildScopeFilter();
     await flush();
     // Uncheck b first.
-    s.boxes[1].el.click();
+    s.boxes[1]!.el.click();
     await flush();
     expect(s.selection()).toEqual(["project:a"]);
     // Now uncheck the last remaining selected option (a).
-    s.boxes[0].el.click();
+    s.boxes[0]!.el.click();
     await flush();
     // scope: [] -> applyFilters treats it as "no filter" -> full list.
     expect(s.selection()).toEqual([]);
@@ -277,7 +277,7 @@ describe("MultiSelect combo (DOM — category filter)", () => {
     expect(idsOf(c.filteredNotes())).toEqual([1, 2, 3]);
 
     // Click the "decision" checkbox (index 1) to UNCHECK it.
-    c.boxes[1].el.click();
+    c.boxes[1]!.el.click();
     await flush();
 
     // Selection lost "decision".
@@ -285,12 +285,12 @@ describe("MultiSelect combo (DOM — category filter)", () => {
     // The real filter narrowed to problem notes only (note 2 was decision).
     expect(idsOf(c.filteredNotes())).toEqual([1, 3]);
     // The other checkboxes keep their correct checked state.
-    expect(c.boxes[0].el.checked).toBe(true);
-    expect(c.boxes[1].el.checked).toBe(false);
-    expect(c.boxes[2].el.checked).toBe(false);
+    expect(c.boxes[0]!.el.checked).toBe(true);
+    expect(c.boxes[1]!.el.checked).toBe(false);
+    expect(c.boxes[2]!.el.checked).toBe(false);
 
     // Uncheck the last remaining option -> no category filter -> full list.
-    c.boxes[0].el.click();
+    c.boxes[0]!.el.click();
     await flush();
     // selection: [] -> applyFilters treats it as "no filter" -> full list.
     expect(c.selection()).toEqual([]);
@@ -300,7 +300,7 @@ describe("MultiSelect combo (DOM — category filter)", () => {
   test("close/reopen preserves selection & the filter (keep-mounted fix)", async () => {
     const c = buildCategoryFilter();
     await flush();
-    c.boxes[1].el.click(); // uncheck decision
+    c.boxes[1]!.el.click(); // uncheck decision
     await flush();
     expect(idsOf(c.filteredNotes())).toEqual([1, 3]);
 
@@ -310,9 +310,9 @@ describe("MultiSelect combo (DOM — category filter)", () => {
     c.setOpenFilter("category");
     await flush();
     // States survive the round-trip; filter unchanged.
-    expect(c.boxes[0].el.checked).toBe(true);
-    expect(c.boxes[1].el.checked).toBe(false);
-    expect(c.boxes[2].el.checked).toBe(false);
+    expect(c.boxes[0]!.el.checked).toBe(true);
+    expect(c.boxes[1]!.el.checked).toBe(false);
+    expect(c.boxes[2]!.el.checked).toBe(false);
     expect(idsOf(c.filteredNotes())).toEqual([1, 3]);
   });
 });
