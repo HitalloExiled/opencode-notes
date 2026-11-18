@@ -19,49 +19,9 @@ import type { Context } from "@opencode/plugin/gui"
 import { NotesApi } from "./contract"
 import { useT } from "./i18n"
 import { NotesBody } from "./view"
+import launcherCss from "./launcher.scss?inline"
 
-const CSS = `
-.notes-modal-scrim {
-  position: fixed;
-  inset: 0;
-  /* The host draws dialogs at z-index 50+; stay below them and above the content. */
-  z-index: 45;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  background: var(--v2-overlay-simple-overlay-scrim);
-}
-.notes-modal {
-  display: flex;
-  flex-direction: column;
-  width: min(900px, calc(100% - 20px));
-  height: calc(100% - 40px);
-  min-height: 0;
-  box-sizing: border-box;
-  overflow: hidden;
-  border-radius: 8px;
-  background: var(--v2-background-bg-layer-01);
-  box-shadow: var(--v2-elevation-raised);
-  outline: none;
-}
-.notes-modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--v2-border-border-muted);
-}
-.notes-modal-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--v2-text-text-base);
-}
-.notes-modal-body { flex: 1; min-height: 0; }
-.notes-modal-scrim.is-closed { display: none; }
-`
+const CSS = launcherCss
 
 const [count, setCount] = createSignal(0)
 const [opened, setOpened] = createSignal(false)
